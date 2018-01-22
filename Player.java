@@ -1,6 +1,8 @@
 // import the API.
 // See xxx for the javadocs.
 import bc.*;
+import navigation.Navigator;
+
 import java.util.ArrayList;
 import java.util.Collections;
 
@@ -9,7 +11,10 @@ public class Player {
 
         // Connect to the manager, starting the game
         GameController gc = new GameController();
-
+        
+        // Navigation
+        Navigator nav = new Navigator(gc.startingMap(gc.planet()));
+        
         // Direction is a normal java enum.
         Direction[] directions = Direction.values();
 
@@ -28,10 +33,10 @@ public class Player {
             }
 
             for(Unit worker:workers) {
-                if(facts.size()!=0 && tryReplicate(gc,worker)) {
+//                if(facts.size()!=0 && tryReplicate(gc,worker)) {
 
-                }
-                else if(tryBuild(gc,worker)){
+//                }
+                if(tryBuild(gc,worker)){
                 }
                 else if(tryBlueprint(gc,worker,UnitType.Factory)){
 
@@ -47,10 +52,10 @@ public class Player {
                 if(!ranger.location().isOnMap()){
                     continue;
                 }
-                randMove(gc,ranger);
-                if(tryAttack(gc,ranger)) {
-
-                }
+                moveOrigin(gc, nav, ranger);
+//                if(tryAttack(gc,ranger)) {
+//
+//                }
             }
             gc.nextTurn();
         }
@@ -80,6 +85,15 @@ public class Player {
                 gc.moveRobot(unit.id(),d);
                 return true;
             }
+        }
+        return false;
+    }
+    
+    public static boolean moveOrigin(GameController gc, Navigator nav, Unit unit) {
+    	Direction d = nav.navigate(gc, unit.location().mapLocation(), new MapLocation(gc.planet(), 0, 0));
+        if (gc.isMoveReady(unit.id()) && d != null) {
+            gc.moveRobot(unit.id(),d);
+            return true;
         }
         return false;
     }
