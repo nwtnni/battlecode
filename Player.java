@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 
 public class Player {
+    private static int GARBAGE_COLLECT_INTERVAL = 20;
+
     public static void main(String[] args) {
 
         // Connect to the manager, starting the game
@@ -61,6 +63,97 @@ public class Player {
             gc.nextTurn();
         }
     }
+
+
+
+    public void play(String[] args) {
+        /**
+         * Plays the game.
+         */
+
+        // Connect to the manager, starting the game
+        GameController gc = new GameController();
+        
+        // Navigation
+        Navigator nav = new Navigator(gc.startingMap(gc.planet()));
+        
+        // Direction is a normal java enum.
+        Direction[] directions = Direction.values();
+
+        // Keep track of round locally
+        int round = 0;
+
+        queueResearch();
+
+        while (true) {
+            // Divide units into separate lists
+            ArrayList<Unit> facts = new ArrayList<Unit>();
+            ArrayList<Unit> workers = new ArrayList<Unit>();
+            ArrayList<Unit> rangers = new ArrayList<Unit>();
+            ArrayList<Unit> knights = new ArrayList<Unit>();
+            ArrayList<Unit> mages = new ArrayList<Unit>();
+            ArrayList<Unit> healers = new ArrayList<Unit>();
+
+            VecUnit units = gc.myUnits();
+            for (int i = 0; i < units.size(); i++) {
+                Unit unit = units.get(i);
+                if (unit.unitType().equals(UnitType.Factory)) {
+                    facts.add(unit);
+                } else if (unit.unitType().equals(UnitType.Worker)) {
+                    workers.add(unit);
+                } else if (unit.unitType().equals(UnitType.Ranger)) {
+                    rangers.add(unit);
+                } else if (unit.unitType().equals(UnitType.Knight)) {
+                    knights.add(unit);
+                } else if (unit.unitType().equals(UnitType.Mage)) {
+                    mages.add(unit);
+                } else {
+                    healers.add(unit);
+                }
+            }
+
+            // In some priority, build factories, build rockets, mine carbonite, etc
+            workerActions();
+
+            // Coordinate attacks and moves
+            soldierActions();
+
+            // Build things in the right proportion
+            factoryActions();
+
+            // Launch rocket if able
+            rocketActions();
+
+            // Garbage collect and call next turn
+            nextTurn();
+        }
+    }
+
+    private void queueResearch() {
+
+    }
+
+    private void workerActions() {
+
+    }
+
+    private void soldierActions() {
+
+    }
+
+    private void factoryActions() {
+
+    }
+
+    private void rocketActions() {
+
+    }
+
+    private void nextTurn() {
+
+    }
+
+
 
     public static ArrayList<Unit> getType(GameController gc,UnitType type) {
         VecUnit units = gc.myUnits();
