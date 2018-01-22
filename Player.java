@@ -57,6 +57,7 @@ public class Player {
 //
 //                }
             }
+            System.gc();
             gc.nextTurn();
         }
     }
