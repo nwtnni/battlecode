@@ -13,7 +13,7 @@ public class Route {
 	private int h;
 	private ArrayList<Integer> distances;
 	
-	public Route(ArrayList<ArrayList<Point>> terrain, int w, int h, Point end) {
+	public Route(ArrayList<ArrayList<Point>> terrain, int w, int h, MapLocation end) {
 		this.w = w;
 		this.h = h;
 		HashSet<Point> visited = new HashSet<>();
@@ -23,7 +23,7 @@ public class Route {
 		PriorityQueue<Point> queue = new PriorityQueue<>((Point a, Point b) -> {
 			return distances.get(a.y*w + a.x) - distances.get(b.y*w + b.x);
 		});
-		distances.set(end.y*w + end.x, 0);
+		distances.set(end.getY()*w + end.getX(), 0);
 		for (int y = 0; y < h; y++) {
 			for (int x = 0; x < w; x++) {
 				queue.add(new Point(x, y));
@@ -46,7 +46,6 @@ public class Route {
 				}
 			}
 		}
-		assert(distances.get(end.y*w + end.x) == 0);
 	}
 	
 	public Direction from(GameController gc, MapLocation start) {
@@ -84,5 +83,9 @@ public class Route {
 			else if (x == 0) { return Direction.North; }
 			else { return Direction.Northeast; }
 		}
+	}
+	
+	public int between(MapLocation start) {
+		return distances.get(start.getY()*w + start.getX());
 	}
 }

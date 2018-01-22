@@ -69,10 +69,14 @@ public class Navigator {
 	}
 	
 	public Direction navigate(GameController gc, MapLocation from, MapLocation to) {
-		Point end = new Point(to.getX(), to.getY());
-		if (!cache.containsKey(end)) {
-			cache.put(end, new Route(terrain, w, h, end));
+		Point key = new Point(to.getX(), to.getY());
+		if (!cache.containsKey(key)) {
+			cache.put(key, new Route(terrain, w, h, to));
 		}
-		return cache.get(end).from(gc, from);
+		return cache.get(key).from(gc, from);
+	}
+	
+	public int between(MapLocation from, MapLocation to) {
+		return cache.get(new Point(to.getX(), to.getY())).between(from);
 	}
 }
