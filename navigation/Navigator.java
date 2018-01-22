@@ -77,6 +77,10 @@ public class Navigator {
 	}
 	
 	public int between(MapLocation from, MapLocation to) {
-		return cache.get(new Point(to.getX(), to.getY())).between(from);
+		Point key = new Point(to.getX(), to.getY());
+		if (!cache.containsKey(key)) {
+			cache.put(key,  new Route(terrain, w, h, to));
+		}
+		return cache.get(key).between(from);
 	}
 }
