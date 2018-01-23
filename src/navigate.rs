@@ -9,19 +9,21 @@ const AROUND: [i16; 3] = [-1, 0, 1];
 
 type Point = (i16, i16);
 
-#[derive(Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 struct Node {
     d: i16,
     x: i16,
     y: i16,
 }
 
+#[derive(Debug)]
 pub struct Route {
     w: i16,
     h: i16,
     distances: Vec<i16>,
 }
 
+#[derive(Debug)]
 pub struct Navigator {
     w: i16,
     h: i16,
@@ -58,7 +60,7 @@ impl Navigator {
     }
 
     pub fn navigate(&mut self, gc: &GameController,
-                    from: &MapLocation, to: &MapLocation) 
+                    from: &MapLocation, to: &MapLocation)
     -> Option<Direction> {
         let key = (to.x as i16, to.y as i16);
         if !self.cache.contains_key(&key) {
@@ -92,7 +94,7 @@ impl PartialOrd for Node {
 
 impl Route {
     pub fn new(terrain: &Vec<Vec<Point>>, w: i16, h: i16, end: &MapLocation) -> Self {
-        let mut distances = vec![i16::max_value(), w*h];
+        let mut distances = vec![i16::max_value(); (w*h) as usize];
         let mut heap = BinaryHeap::default();
 
         distances[(end.y as i16 * w + end.x as i16) as usize] = 0;
@@ -139,7 +141,7 @@ impl Route {
             }
         }
 
-        if self.distances[(start.y as i16 * self.w + start.x as i16) as usize] < min { 
+        if self.distances[(start.y as i16 * self.w + start.x as i16) as usize] < min {
             None
         }
         else {
@@ -156,8 +158,8 @@ impl Route {
             })
         }
     }
-    
+
     pub fn distance(&self, start: &MapLocation) -> i16 {
-        self.distances[(start.y as i16 * self.w + start.x as i16) as usize] 
+        self.distances[(start.y as i16 * self.w + start.x as i16) as usize]
     }
 }
