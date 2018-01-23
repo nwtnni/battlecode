@@ -1,0 +1,7 @@
+[package]
+name = "battlecode"
+version = "0.1.0"
+authors = ["Newton Ni <nwtnni@gmail.com>"]
+
+[dependencies]
+battlecode-engine = { path = "../battlecode-engine" }
