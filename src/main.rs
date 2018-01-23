@@ -12,7 +12,7 @@ use Team::*;
 use Direction::*;
 use UnitType::*;
 
-use bc::navigate::*;
+use bc::navigation::*;
 
 fn main() {
 
@@ -21,5 +21,8 @@ fn main() {
     loop {
         println!("{}", gc.get_time_left_ms());
         gc.next_turn(); 
+    
+    
     }
+
 }
