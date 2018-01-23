@@ -29,6 +29,7 @@ name = "battlecode"
 version = "0.1.0"
 dependencies = [
  "battlecode-engine 0.1.0",
+ "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]

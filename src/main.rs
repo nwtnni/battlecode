@@ -12,7 +12,7 @@ use Team::*;
 use Direction::*;
 use UnitType::*;
 
-use bc::navigation::*;
+use bc::navigate::*;
 
 fn main() {
 

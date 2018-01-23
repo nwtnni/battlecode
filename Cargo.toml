@@ -5,3 +5,4 @@ authors = ["Newton Ni <nwtnni@gmail.com>"]
 
 [dependencies]
 battlecode-engine = { path = "../battlecode-engine" }
+fnv = "1.0.6"
