@@ -5,6 +5,9 @@ import navigation.Navigator;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.concurrent.ThreadLocalRandom;
 
 public class Player {
     public static void main(String[] args) {
@@ -15,51 +18,231 @@ public class Player {
         // Navigation
         Navigator nav = new Navigator(gc.startingMap(gc.planet()));
         
-        // Direction is a normal java enum.
-        Direction[] directions = Direction.values();
+        PlanetMap startingMap = gc.startingMap(gc.planet());
+        AsteroidPattern asteroidPattern = gc.asteroidPattern(); 
+
+        // Initialize Karb Locations
+        HashMap<MapLocation, Integer> karbLocs = new HashMap<>();
+        for(int x=0;x<startingMap.getWidth();x++) {
+            for(int y=0;y<startingMap.getHeight();y++) {
+                MapLocation loc = new MapLocation(gc.planet(),x,y);
+                int karb = (int) startingMap.initialKarboniteAt(loc);
+                if(karb != 0) {
+                    karbLocs.put(loc, karb);
+                }
+            }
+        }
+
+        gc.queueResearch(UnitType.Worker);
+        gc.queueResearch(UnitType.Rocket);
+
+        MapLocation enStartLoc=null;
+        VecUnit startingUnits = startingMap.getInitial_units();
+        for(int i=0;i<startingUnits.size();i++) {
+            if(startingUnits.get(i).team() != gc.team()) {
+                enStartLoc = startingUnits.get(i).location().mapLocation();
+                break;
+            }
+        }
+
+        int numRockets = 0;
 
         while (true) {
+            System.out.println("Time In Pool: " + gc.getTimeLeftMs());
+            // Update karbLocs
+            for(MapLocation loc:((HashMap<MapLocation,Integer>)karbLocs.clone()).keySet()) {
+                if(gc.canSenseLocation(loc)) {
+                    int karb = (int) gc.karboniteAt(loc);
+                    if(karb != 0) {
+                        karbLocs.replace(loc, karb);
+                    }
+                    else {
+                        karbLocs.remove(loc);
+                    }
+                }
+            }
+            if(gc.planet().equals(Planet.Mars)) {
+                try {
+                    AsteroidStrike asteroid = asteroidPattern.asteroid(gc.round());
+                    MapLocation loc = asteroid.getLocation();
+                    int karb = (int) asteroid.getKarbonite();
+                    if(karbLocs.containsKey(loc)) {
+                        karb += karbLocs.get(loc);
+                    }
+                    karbLocs.put(loc, karb);
+                }
+                catch (Exception e){}
+            }
+
+            // Store Units
             VecUnit units = gc.myUnits();
             ArrayList<Unit> facts = getType(gc,UnitType.Factory);
+            ArrayList<Unit> unfinishedFacts = new ArrayList<>();
+            ArrayList<Unit> finishedFacts = new ArrayList<>();
+            for(Unit f:facts) {
+                if(f.structureIsBuilt()==1) {
+                    finishedFacts.add(f);
+                }
+                else {
+                    unfinishedFacts.add(f);
+                }
+            }
+            ArrayList<Unit> rockets = getType(gc,UnitType.Rocket);
+            ArrayList<Unit> finishedRockets = new ArrayList<>();
+            ArrayList<Unit> unfinishedRockets = new ArrayList<>();
+            for(Unit r:rockets){
+                if(r.structureIsBuilt()==1) {
+                    finishedRockets.add(r);
+                }
+                else {
+                    unfinishedRockets.add(r);
+                }
+            }
             ArrayList<Unit> workers = getType(gc,UnitType.Worker);
             ArrayList<Unit> rangers = getType(gc,UnitType.Ranger);
             ArrayList<Unit> knights = getType(gc,UnitType.Knight);
             ArrayList<Unit> mages = getType(gc,UnitType.Mage);
             ArrayList<Unit> healers = getType(gc,UnitType.Healer);
 
-            for(Unit fact:facts) {
-                tryBuild(gc,fact,UnitType.Ranger);
+            // Command Units
+            for(Unit fact:finishedFacts) {
+                if(workers.size()==0) {
+                    tryBuild(gc,fact,UnitType.Worker);
+                }
+                else if (gc.researchInfo().getLevel(UnitType.Rocket) == 0 || rockets.size() != 0 ){
+                    tryBuild(gc,fact,UnitType.Ranger);
+                }
                 tryUnload(gc,fact);
+            }
+            ArrayList<MapLocation> keys = new ArrayList<>(karbLocs.keySet());
+            HashMap<Unit,MapLocation> workerTarget = new HashMap<>();
+            HashSet<MapLocation> karbAssigned = new HashSet<>();
+            HashMap<Unit,Integer> rocketAssigned = new HashMap<>();
+
+            for(Unit r:finishedRockets) {
+                PlanetMap mars = gc.startingMap(Planet.Mars);
+                int randX = ThreadLocalRandom.current().nextInt(0, (int)mars.getWidth()+ 1);
+                int randY = ThreadLocalRandom.current().nextInt(0, (int)mars.getHeight()+1);
+                if(r.structureGarrison().size() >=8 && gc.canLaunchRocket(r.id(),new MapLocation(Planet.Mars,randX,randY))) {
+                    gc.launchRocket(r.id(),new MapLocation(Planet.Mars,randX,randY));
+                    System.out.println("LAUNCH!");
+                }
+
+                if(r.rocketIsUsed()==1) {
+                    for(int i=0;i<r.structureGarrison().size();i++) {
+                        tryUnload(gc,r);
+                    }
+                }
+                else {
+                    VecUnit nearbyUnits = gc.senseNearbyUnits(r.location().mapLocation(),2);
+                    for(int i=0;i<nearbyUnits.size();i++) {
+                        if(gc.canLoad(r.id(),nearbyUnits.get(i).id())) {
+                            gc.load(r.id(),nearbyUnits.get(i).id());
+                        }
+                    }
+                }
             }
 
             for(Unit worker:workers) {
-//                if(facts.size()!=0 && tryReplicate(gc,worker)) {
+                if(!worker.location().isOnMap()){
+                    continue;
+                }
+                if(tryRockets(gc,worker, finishedRockets,rocketAssigned,nav)) {
 
-//                }
+                }
+                else if(((facts.size()!=0 && workers.size() < 10) || (worker.location().mapLocation().getPlanet() == Planet.Mars && workers.size() < 10)) && tryReplicate(gc,worker)) {
+
+                }
                 if(tryBuild(gc,worker)){
                 }
-                else if(tryBlueprint(gc,worker,UnitType.Factory)){
+                else if(facts.size() < 4 && tryBlueprint(gc,worker,UnitType.Factory)){
+                }
+                else if(tryBlueprint(gc,worker,UnitType.Rocket)) {
 
                 }
                 else if(tryHarvest(gc,worker)) {
-                }
-                else if(randMove(gc,worker)) {
-                }
 
+                }
+                else if(unfinishedFacts.size()!=0 && moveTo(gc,nav,worker,unfinishedFacts.get(0).location().mapLocation())) {
+                    
+                }
+                else if(unfinishedRockets.size()!=0 && moveTo(gc,nav,worker,unfinishedRockets.get(0).location().mapLocation())) {
+
+                }
+                
+                else if (karbLocs.size() != 0){
+                    if(workerTarget.containsKey(worker)) {
+                        if(workerTarget.get(worker).equals(worker.location().mapLocation())) {
+                            workerTarget.remove(worker);
+                        }
+                        else {
+                            moveTo(gc,nav,worker,workerTarget.get(worker));
+                        }
+                    }
+                    else {
+                        Collections.sort(keys, (MapLocation loc1, MapLocation loc2) -> nav.between(worker.location().mapLocation(),loc1) - nav.between(worker.location().mapLocation(),loc2));
+                        for(MapLocation loc:keys) {
+                            if(!karbAssigned.contains(loc)) {
+                                workerTarget.put(worker,loc);
+                                karbAssigned.add(loc);
+                                moveTo(gc,nav,worker,loc);
+                                break;
+                            }
+                        }
+
+                    }
+
+                }
             }
 
             for(Unit ranger:rangers) {
                 if(!ranger.location().isOnMap()){
                     continue;
                 }
-                moveOrigin(gc, nav, ranger);
-//                if(tryAttack(gc,ranger)) {
-//
-//                }
+
+                if(tryAttack(gc,ranger)) {
+
+                }
+                else if(tryRockets(gc,ranger, finishedRockets,rocketAssigned,nav)) {
+
+                }
+                else if (gc.planet().equals(Planet.Earth) && moveTo(gc, nav, ranger,enStartLoc)){
+                    
+                }
+                else if (randMove(gc,ranger)){
+
+                }
             }
-            System.gc();
+
+            if (gc.round()%10 == 0) {
+                System.runFinalization();
+                System.gc();
+            }
             gc.nextTurn();
         }
+    }
+
+    public static boolean tryRockets(GameController gc, Unit unit, ArrayList<Unit> rockets, HashMap<Unit,Integer> rocketAssigned, Navigator nav) {
+        for(Unit r: rockets) {
+            if(r.rocketIsUsed() == 1) {
+                return false;
+            }
+            if(!rocketAssigned.containsKey(r) || rocketAssigned.get(r) <8) {
+                if(gc.canLoad(r.id(),unit.id())) {
+                    gc.load(r.id(),unit.id());
+                }
+                else {
+                    moveTo(gc, nav, unit,r.location().mapLocation());
+                }
+                int numAssigned = 1;
+                if(rocketAssigned.containsKey(r)) {
+                    numAssigned += rocketAssigned.get(r);
+                }
+                rocketAssigned.put(r,numAssigned);
+                return true;
+            }
+        }
+        return false;
     }
 
     public static ArrayList<Unit> getType(GameController gc,UnitType type) {
@@ -90,9 +273,9 @@ public class Player {
         return false;
     }
     
-    public static boolean moveOrigin(GameController gc, Navigator nav, Unit unit) {
-    	Direction d = nav.navigate(gc, unit.location().mapLocation(), new MapLocation(gc.planet(), 0, 0));
-        if (gc.isMoveReady(unit.id()) && d != null) {
+    public static boolean moveTo(GameController gc, Navigator nav, Unit unit, MapLocation loc) {
+    	Direction d = nav.navigate(gc, unit.location().mapLocation(), loc);
+        if (gc.isMoveReady(unit.id()) && d != null && gc.canMove(unit.id(),d)) {
             gc.moveRobot(unit.id(),d);
             return true;
         }
