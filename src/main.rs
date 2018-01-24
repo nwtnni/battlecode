@@ -29,6 +29,7 @@ fn main() {
     let mut nav = Navigator::new(gc.starting_map(gc.planet()));
     let end = MapLocation::new(gc.planet(), 0, 0);
 
+    gc.queue_research(Worker);
     gc.queue_research(Knight);
     gc.queue_research(Knight);
     gc.queue_research(Healer);
@@ -51,7 +52,7 @@ fn main() {
     for x in 0..starting_map.width {
         for y in 0..starting_map.height {
             let loc = MapLocation::new(gc.planet(),x as i32,y as i32);
-            let karb = starting_map.initial_karbonite[x][y].clone();
+            let karb = starting_map.initial_karbonite[y][x].clone();
             if karb > 0 {
                 karb_locs.insert(loc,karb);
             }
@@ -64,8 +65,6 @@ fn main() {
         karb_locs.iter_mut()
             .filter(|&(&loc, _)| gc.can_sense_location(loc))
             .for_each(|(&loc, karb)| *karb = gc.karbonite_at(loc).unwrap());
-
-
 
         // Collect Units
         let (fin_facts,un_facts):(Vec<_>,Vec<_>) = get_type(&gc,Factory)
@@ -80,17 +79,16 @@ fn main() {
         let healers = get_type(&gc, Healer);
 
         for fact in &fin_facts {
-            if !(gc.research_info().unwrap().get_level(&Rocket) > 0 && un_rockets.len() + fin_rockets.len() ==0) {
-                if workers.len() == 0 {
+            if workers.len() == 0 {
                     try_produce(&mut gc,fact,Worker);
-                }
-                else {
+            }
+            else if !(gc.research_info().unwrap().get_level(&Rocket) > 0 && un_rockets.len() + fin_rockets.len() ==0) {
                     try_produce(&mut gc, fact, Ranger);
-                }
             }
             try_unload(&mut gc,fact)
 
         }
+        println!("{}", fin_rockets.len());
 
         for rocket in &fin_rockets {
             if !rocket.rocket_is_used().unwrap() {
@@ -119,7 +117,7 @@ fn main() {
                 continue
             }
 
-            if fin_facts.len() + un_facts.len() != 0 && workers.len() <10 && try_replicate(&mut gc, worker) {
+            if fin_facts.len() + un_facts.len() != 0 && !(gc.research_info().unwrap().get_level(&Rocket) > 0 && un_rockets.len() + fin_rockets.len() ==0) && workers.len() <10 && try_replicate(&mut gc, worker) {
 
             }
             if try_build(&mut gc, worker) {
@@ -135,6 +133,9 @@ fn main() {
             }
             if un_facts.len() > 0 {
                 try_move_to(&mut gc, &mut nav, worker, &un_facts[0].location().map_location().unwrap());
+            }
+            else if un_rockets.len() > 0{
+                try_move_to(&mut gc, &mut nav, worker, &un_rockets[0].location().map_location().unwrap());
             }
             else if fin_rockets.len() > 0 && gc.planet() != Planet::Mars {
                 try_move_to(&mut gc, &mut nav, worker, &fin_rockets[0].location().map_location().unwrap());
