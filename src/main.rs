@@ -27,9 +27,8 @@ fn main() {
 
     let mut gc = GameController::new_player_env().unwrap();
     let mut nav = Navigator::new(gc.starting_map(gc.planet()));
-    let end = MapLocation::new(gc.planet(), 0, 0);
 
-    gc.queue_research(Worker);
+    // RESEARCH QUEUE
     gc.queue_research(Knight);
     gc.queue_research(Knight);
     gc.queue_research(Healer);
@@ -40,7 +39,10 @@ fn main() {
     gc.queue_research(Healer);
     gc.queue_research(Mage);
     gc.queue_research(Mage);
-
+    let starting_units = gc.starting_map(gc.planet()).initial_units.iter().filter(|unit| unit.team()== gc.team()).cloned().collect::<Vec<_>>();
+    let start = starting_units.get(0).map(|unit| {
+        unit.location().map_location().unwrap()
+    });
     let starting_en_units = gc.starting_map(gc.planet()).initial_units.iter().filter(|unit| unit.team()== gc.team().other()).cloned().collect::<Vec<_>>();
     let rally = starting_en_units.get(0).map(|unit| {
         unit.location().map_location().unwrap()
@@ -58,6 +60,9 @@ fn main() {
             }
         }
     }
+
+    let mut prod_num = 0;
+    let production_queue = [Knight,Knight, Knight, Knight,Healer];
 
     loop {
         // Update Karb Map 
@@ -92,7 +97,8 @@ fn main() {
                 try_produce(&mut gc,fact,Worker);
             }
             else if !(gc.research_info().unwrap().get_level(&Rocket) > 0 && un_rockets.len() + fin_rockets.len() ==0) {
-                try_produce(&mut gc, fact, Knight);
+                try_produce(&mut gc, fact, production_queue[prod_num%production_queue.len()]);
+                prod_num = (prod_num+1)%production_queue.len();
             }
             try_unload(&mut gc,fact)
         }
@@ -175,17 +181,29 @@ fn main() {
                 continue
             }
 
-            if try_attack(&mut gc, knight) {
+            if try_attack(&mut gc, &mut nav, knight) {
 
             }
-            if try_javelin(&mut gc, knight) {
+            if try_javelin(&mut gc, &mut nav, knight) {
 
             }
 
-            let mut nearby_units = gc.sense_nearby_units_by_team(knight.location().map_location().unwrap(), knight.attack_range().unwrap(), gc.team().other());
+            let mut nearby_units = gc.sense_nearby_units_by_team(knight.location().map_location().unwrap(), knight.vision_range(), gc.team().other());
             nearby_units.sort_by_key(|en| nav.between(&knight.location().map_location().unwrap(), &en.location().map_location().unwrap()));
             if nearby_units.len() != 0 {
-                try_move_to(&mut gc, &mut nav, knight, &nearby_units[0].location().map_location().unwrap());
+                let friends = gc.sense_nearby_units_by_team(knight.location().map_location().unwrap(), 9, gc.team());
+                let mut enemies = gc.sense_nearby_units_by_team(knight.location().map_location().unwrap(),50, gc.team().other());
+                enemies.retain(|en| en.unit_type().is_robot() && en.unit_type() != Worker);
+                if friends.len() >= enemies.len() {
+                    try_move_to(&mut gc, &mut nav, knight, &nearby_units[0].location().map_location().unwrap());
+                }
+                else {
+                    let my_loc = knight.location().map_location().unwrap();
+                    let en_loc = nearby_units[0].location().map_location().unwrap();
+                    if start != None {
+                        try_move_to(&mut gc, &mut nav, knight, &start.unwrap());
+                    }
+                }
             }
             if fin_rockets.len() != 0 {
                 try_move_to(&mut gc, &mut nav, knight, &fin_rockets[0].location().map_location().unwrap());
@@ -201,7 +219,7 @@ fn main() {
                 continue
             }
 
-            if try_attack(&mut gc,ranger) {
+            if try_attack(&mut gc, &mut nav, ranger) {
             }
             if fin_rockets.len() != 0 {
                 try_move_to(&mut gc, &mut nav, ranger, &fin_rockets[0].location().map_location().unwrap());
@@ -211,7 +229,45 @@ fn main() {
             }
         }
 
-        println!("{}", gc.get_time_left_ms());
+        let mut overcharged_units = Vec::new();
+
+        // Healer
+        for healer in &healers {
+            if !healer.location().is_on_map() {
+                continue
+            }
+
+            if try_heal(&mut gc, &mut nav, healer) {
+
+            }
+
+            let overcharged = try_overcharge(&mut gc, &mut nav, healer);
+            if overcharged != None {
+                overcharged_units.push(overcharged.unwrap());
+            }
+
+            else if fin_rockets.len() != 0 {
+                try_move_to(&mut gc, &mut nav, healer, &fin_rockets[0].location().map_location().unwrap());
+            }
+            else if rally != None {
+                try_move_to(&mut gc, &mut nav, healer, &rally.unwrap());
+            }
+        }
+
+        if overcharged_units.len() > 0 {
+            println!("OVERCHARGING!: {:?}",overcharged_units);
+        }
+        for unit_id in overcharged_units {
+            let unit = gc.unit(unit_id).unwrap();
+            if try_attack(&mut gc, &mut nav, &unit) {
+
+            }
+            if try_javelin(&mut gc, &mut nav, &unit) {
+
+            }
+        }
+
+        //println!("{}", gc.get_time_left_ms());
         gc.next_turn();
     }
 }
@@ -306,8 +362,9 @@ fn try_load(gc: &mut GameController, rocket: &Unit) -> usize {
 }
 
 // ARMY METHODS
-fn try_attack(gc: &mut GameController, unit: &Unit) -> bool {
-    let en_units = gc.sense_nearby_units_by_team(unit.location().map_location().unwrap(),unit.attack_range().unwrap(),unit.team().other());
+fn try_attack(gc: &mut GameController, nav: &mut Navigator, unit: &Unit) -> bool {
+    let mut en_units = gc.sense_nearby_units_by_team(unit.location().map_location().unwrap(),unit.attack_range().unwrap(),unit.team().other());
+    en_units.sort_by_key(|en| -nav.between(&unit.location().map_location().unwrap(),&en.location().map_location().unwrap()));
     if gc.is_attack_ready(unit.id()) {
         for enemy in en_units {
             if gc.can_attack(unit.id(),enemy.id()) {
@@ -319,8 +376,41 @@ fn try_attack(gc: &mut GameController, unit: &Unit) -> bool {
     return false
 }
 
-fn try_javelin(gc: &mut GameController, knight: &Unit) -> bool {
-    let en_units = gc.sense_nearby_units_by_team(knight.location().map_location().unwrap(),knight.ability_range().unwrap(),knight.team().other());
+fn try_heal(gc: &mut GameController, nav: &mut Navigator, healer: &Unit) -> bool {
+    let mut units = gc.sense_nearby_units_by_team(healer.location().map_location().unwrap(), healer.attack_range().unwrap(),healer.team());
+    units.sort_by_key(|en| -nav.between(&healer.location().map_location().unwrap(),&en.location().map_location().unwrap()));
+    if gc.is_heal_ready(healer.id()) {
+        for friend in units {
+            if friend.health() != friend.max_health() && gc.can_heal(healer.id(),friend.id()) {
+                gc.heal(healer.id(),friend.id());
+                return true;
+            }
+        }
+    }
+    return false
+}
+
+fn try_overcharge(gc: &mut GameController, nav: &mut Navigator, healer: &Unit) -> Option<UnitID> {
+    let mut units = gc.sense_nearby_units_by_team(healer.location().map_location().unwrap(), healer.ability_range().unwrap(),healer.team());
+    units.sort_by_key(|en| -nav.between(&healer.location().map_location().unwrap(),&en.location().map_location().unwrap()));
+    if gc.is_overcharge_ready(healer.id()) {
+        for friend in units {
+            if !friend.unit_type().is_robot() || friend.unit_type() == Worker {
+                continue
+            }
+            if friend.ability_heat().unwrap() >=10 && gc.can_overcharge(healer.id(),friend.id()) {
+                gc.overcharge(healer.id(),friend.id());
+                return Some(friend.id())
+            }
+        }
+    }
+    return None
+
+}
+
+fn try_javelin(gc: &mut GameController, nav: &mut Navigator, knight: &Unit) -> bool {
+    let mut en_units = gc.sense_nearby_units_by_team(knight.location().map_location().unwrap(),knight.ability_range().unwrap(),knight.team().other());
+    en_units.sort_by_key(|en| nav.between(&knight.location().map_location().unwrap(),&en.location().map_location().unwrap()));
     if gc.is_javelin_ready(knight.id())  {
         for enemy in en_units {
             if gc.can_javelin(knight.id(),enemy.id()) {
