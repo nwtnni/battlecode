@@ -133,7 +133,7 @@ impl Route {
                 }
                 let target = MapLocation::new(start.planet, j as i32, i as i32);
                 let distance = self.distances[(i*self.w + j) as usize];
-                if distance < min && gc.is_occupiable(target).unwrap() {
+                if distance < min && (!gc.can_sense_location(target) || gc.is_occupiable(target).unwrap()) {
                     x = dx;
                     y = dy;
                     min = distance;
@@ -141,7 +141,7 @@ impl Route {
             }
         }
 
-        if self.distances[(start.y as i16 * self.w + start.x as i16) as usize] < min {
+        if self.distances[(start.y as i16 * self.w + start.x as i16) as usize] <= min {
             None
         }
         else {
