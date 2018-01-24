@@ -42,7 +42,7 @@ fn main() {
     gc.queue_research(Mage);
 
     let starting_en_units = gc.starting_map(gc.planet()).initial_units.iter().filter(|unit| unit.team()== gc.team().other()).cloned().collect::<Vec<_>>();
-    let en_loc = starting_en_units.get(0).map(|unit| {
+    let rally = starting_en_units.get(0).map(|unit| {
         unit.location().map_location().unwrap()
     });
  
@@ -66,6 +66,14 @@ fn main() {
             .filter(|&(&loc, _)| gc.can_sense_location(loc))
             .for_each(|(&loc, karb)| *karb = gc.karbonite_at(loc).unwrap());
 
+        if gc.planet() == Planet::Mars {
+            if gc.asteroid_pattern().has_asteroid(gc.round()) {
+                let asteroid_pattern = gc.asteroid_pattern();
+                let asteroid = asteroid_pattern.asteroid(gc.round()).unwrap();
+                karb_locs.insert(asteroid.location, asteroid.karbonite);
+            }
+        }
+
         // Collect Units
         let (fin_facts,un_facts):(Vec<_>,Vec<_>) = get_type(&gc,Factory)
             .into_iter().partition(|fact| fact.structure_is_built().unwrap());
@@ -78,18 +86,18 @@ fn main() {
         let mages = get_type(&gc, Mage);
         let healers = get_type(&gc, Healer);
 
+        // FACTORY
         for fact in &fin_facts {
             if workers.len() == 0 {
-                    try_produce(&mut gc,fact,Worker);
+                try_produce(&mut gc,fact,Worker);
             }
             else if !(gc.research_info().unwrap().get_level(&Rocket) > 0 && un_rockets.len() + fin_rockets.len() ==0) {
-                    try_produce(&mut gc, fact, Ranger);
+                try_produce(&mut gc, fact, Knight);
             }
             try_unload(&mut gc,fact)
-
         }
-        println!("{}", fin_rockets.len());
 
+        // ROCKET
         for rocket in &fin_rockets {
             if !rocket.rocket_is_used().unwrap() {
                 let num_loaded = try_load(&mut gc, rocket);
@@ -107,30 +115,45 @@ fn main() {
                 }
             }
             else {
-                try_unload(&mut gc, rocket);
+                if rocket.structure_garrison().unwrap().len() > 0 {
+                    try_unload(&mut gc, rocket);
+                }
             }
         }
 
-        // Command Units
+        let workers = get_type(&gc, Worker);
+        // WORKER
         for worker in &workers {
             if !worker.location().is_on_map() {
                 continue
             }
 
-            if fin_facts.len() + un_facts.len() != 0 && !(gc.research_info().unwrap().get_level(&Rocket) > 0 && un_rockets.len() + fin_rockets.len() ==0) && workers.len() <10 && try_replicate(&mut gc, worker) {
-
+            if fin_facts.len() + un_facts.len() != 0 && !(gc.research_info().unwrap().get_level(&Rocket) > 0 && un_rockets.len() + fin_rockets.len() ==0) && workers.len() <10 {
+                try_replicate(&mut gc, &worker);
             }
+        }
+
+
+        let workers = get_type(&gc, Worker);
+        for worker in &workers {
+            if !worker.location().is_on_map() {
+                continue
+            }
+            
+
             if try_build(&mut gc, worker) {
+                
             }
             else if fin_facts.len() + un_facts.len() < 4 && try_blueprint(&mut gc,worker,Factory) {
-
+                
             }
             else if gc.research_info().unwrap().get_level(&Rocket)>0 && try_blueprint(&mut gc,worker,Rocket){
-
+                
             }
             else if try_harvest(&mut gc, worker) {
-
+                
             }
+            
             if un_facts.len() > 0 {
                 try_move_to(&mut gc, &mut nav, worker, &un_facts[0].location().map_location().unwrap());
             }
@@ -146,23 +169,49 @@ fn main() {
                 try_move_to(&mut gc, &mut nav, worker, locs[0]);
             }
         }
+        // KNIGHT 
+        for knight in &knights {
+            if !knight.location().is_on_map() {
+                continue
+            }
 
+            if try_attack(&mut gc, knight) {
+
+            }
+            if try_javelin(&mut gc, knight) {
+
+            }
+
+            let mut nearby_units = gc.sense_nearby_units_by_team(knight.location().map_location().unwrap(), knight.attack_range().unwrap(), gc.team().other());
+            nearby_units.sort_by_key(|en| nav.between(&knight.location().map_location().unwrap(), &en.location().map_location().unwrap()));
+            if nearby_units.len() != 0 {
+                try_move_to(&mut gc, &mut nav, knight, &nearby_units[0].location().map_location().unwrap());
+            }
+            if fin_rockets.len() != 0 {
+                try_move_to(&mut gc, &mut nav, knight, &fin_rockets[0].location().map_location().unwrap());
+            }
+            else if rally != None {
+                try_move_to(&mut gc, &mut nav, knight, &rally.unwrap());
+            }
+        }
+
+        // RANGER
         for ranger in &rangers {
             if !ranger.location().is_on_map() {
                 continue
             }
-            if try_attack(&mut gc,ranger) {
 
+            if try_attack(&mut gc,ranger) {
             }
             if fin_rockets.len() != 0 {
                 try_move_to(&mut gc, &mut nav, ranger, &fin_rockets[0].location().map_location().unwrap());
             }
-            else if en_loc != None && try_move_to(&mut gc, &mut nav, ranger, &en_loc.unwrap()) {
+            else if rally != None && try_move_to(&mut gc, &mut nav, ranger, &rally.unwrap()) {
 
             }
         }
 
-        //println!("{}", gc.get_time_left_ms());
+        println!("{}", gc.get_time_left_ms());
         gc.next_turn();
     }
 }
@@ -194,10 +243,10 @@ fn try_replicate(gc: &mut GameController, unit: &Unit) -> bool {
     return false
 }
 
-fn try_blueprint(gc: &mut GameController, unit: &Unit, buildingType: UnitType) -> bool{
+fn try_blueprint(gc: &mut GameController, unit: &Unit, building_type: UnitType) -> bool{
     for d in Direction::all() {
-        if gc.can_blueprint(unit.id(),buildingType,d) {
-            gc.blueprint(unit.id(),buildingType,d);
+        if gc.can_blueprint(unit.id(),building_type,d) {
+            gc.blueprint(unit.id(),building_type,d);
             return true
         }
     }
@@ -234,11 +283,11 @@ fn try_produce(gc: &mut GameController, fact: &Unit, unit_type: UnitType) -> boo
     return false
 }
 
-fn try_unload(gc: &mut GameController, fact: &Unit) {
-    let mut num_units = fact.structure_garrison().unwrap().len();
+fn try_unload(gc: &mut GameController, building: &Unit) {
+    let mut num_units = building.structure_garrison().unwrap().len();
     for d in Direction::all() {
-        if num_units > 0 && gc.can_unload(fact.id(),d) {
-            gc.unload(fact.id(),d);
+        if num_units > 0 && gc.can_unload(building.id(),d) {
+            gc.unload(building.id(),d);
             num_units -= 1;
         }
     }
@@ -253,7 +302,7 @@ fn try_load(gc: &mut GameController, rocket: &Unit) -> usize {
             num_loaded += 1;
         }
     }
-    num_loaded
+    return num_loaded
 }
 
 // ARMY METHODS
@@ -263,6 +312,19 @@ fn try_attack(gc: &mut GameController, unit: &Unit) -> bool {
         for enemy in en_units {
             if gc.can_attack(unit.id(),enemy.id()) {
                 gc.attack(unit.id(),enemy.id());
+                return true
+            }
+        }
+    }
+    return false
+}
+
+fn try_javelin(gc: &mut GameController, knight: &Unit) -> bool {
+    let en_units = gc.sense_nearby_units_by_team(knight.location().map_location().unwrap(),knight.ability_range().unwrap(),knight.team().other());
+    if gc.is_javelin_ready(knight.id())  {
+        for enemy in en_units {
+            if gc.can_javelin(knight.id(),enemy.id()) {
+                gc.javelin(knight.id(),enemy.id());
                 return true
             }
         }
