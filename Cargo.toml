@@ -6,3 +6,4 @@ authors = ["Newton Ni <nwtnni@gmail.com>"]
 [dependencies]
 battlecode-engine = { git = "https://github.com/battlecode/battlecode-2018" }
 fnv = "1.0.6"
+rand = "0.4"
