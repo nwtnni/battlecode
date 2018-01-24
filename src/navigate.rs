@@ -1,9 +1,9 @@
 use fnv::FnvHashMap;
 use std::collections::BinaryHeap;
 use std::cmp::Ordering;
-use bc::map::*;
-use bc::controller::*;
-use bc::location::*;
+use engine::map::*;
+use engine::controller::*;
+use engine::location::*;
 
 const AROUND: [i16; 3] = [-1, 0, 1];
 
