@@ -136,6 +136,7 @@ impl Navigator {
 
         let heuristic = &self.cache[&(ex, ey)];
         let mut distances = vec![i16::max_value(); (self.w*self.h) as usize];
+        let mut explored = vec![false; (self.w*self.h) as usize];
         let mut heap = BinaryHeap::default();
         let mut path = FnvHashMap::default();
 
@@ -145,21 +146,22 @@ impl Navigator {
         while let Some(node) = heap.pop() {
 
             // Skip explored nodes
-            let node_index = self.index(node.x, node.y);
-            let d = distances[node_index];
-            if d < node.d { continue }
+            explored[self.index(node.x, node.y)] = true;
 
             // Found goal
             if node.x == ex && node.y == ey { break }
+            let node_index = self.index(node.x, node.y);
+            let d = distances[node_index];
 
             for &(x, y) in &self.terrain[node_index] {
                 let next = MapLocation::new(gc.planet(), x as i32, y as i32);
-                if !(x == ex && y == ey) && gc.can_sense_location(next) && !gc.is_occupiable(next).unwrap() {
+                let next_index = self.index(x, y);
+                let (da, db) = (d + 1, distances[next_index]);
+
+                if explored[next_index] || (!(x == ex && y == ey)
+                && gc.can_sense_location(next) && !gc.is_occupiable(next).unwrap()) {
                     continue
                 }
-
-                let next_index = (y*self.w + x) as usize;
-                let (da, db) = (d + 1, distances[next_index]);
 
                 if da < db {
                     distances[next_index] = da;
