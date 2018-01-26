@@ -32,8 +32,10 @@ struct HNode {
 pub struct Navigator {
     w: i16,
     h: i16,
+    n: u8,
     terrain: Vec<Vec<Point>>,
     cache: FnvHashMap<Point, Vec<i16>>,
+    explored: Vec<u8>,
 }
 
 impl Navigator {
@@ -43,6 +45,7 @@ impl Navigator {
         let cache = FnvHashMap::default();
 
         let mut terrain = Vec::new();
+        let explored = vec![0; (w*h) as usize];
         for _ in 0..(w*h) { terrain.push(Vec::new()); }
 
         for y in 0..h {
@@ -59,7 +62,7 @@ impl Navigator {
                 }
             }
         }
-        Navigator { w, h, terrain, cache }
+        Navigator { w, h, n: 0, terrain, cache, explored }
     }
 
     pub fn moves_between(&mut self, start: &MapLocation, end: &MapLocation) -> i16 {
@@ -107,21 +110,23 @@ impl Navigator {
         let (ex, ey) = (end.x as i16, end.y as i16);
         let mut distances = vec![i16::max_value(); (self.w*self.h) as usize];
         let mut heap = BinaryHeap::default();
+        self.n = self.n.wrapping_add(1);
         distances[self.index(ex, ey)] = 0;
         heap.push(Node { d: 0, x: ex, y: ey });
 
         while let Some(node) = heap.pop() {
             let node_index = self.index(node.x, node.y);
             let d = distances[node_index];
-            if d < node.d { continue }
+            self.explored[node_index] = self.n;
 
             for &(x, y) in &self.terrain[node_index] {
-                let index = self.index(x, y);
+                let next_index = self.index(x, y);
                 let da = d + 1;
-                let db = distances[index];
+                let db = distances[next_index];
+                if self.explored[next_index] == self.n { continue }
 
                 if da < db {
-                    distances[index] = da;
+                    distances[next_index] = da;
                     heap.push(Node { d: da, x, y });
                 }
             }
@@ -129,14 +134,14 @@ impl Navigator {
         self.cache.insert((ex, ey), distances);
     }
 
-    fn a_star(&self, gc: &GameController, start: &MapLocation, end: &MapLocation) -> Option<Direction> {
+    fn a_star(&mut self, gc: &GameController, start: &MapLocation, end: &MapLocation) -> Option<Direction> {
         if start == end { return None }
         let (sx, sy) = (start.x as i16, start.y as i16);
         let (ex, ey) = (end.x as i16, end.y as i16);
+        self.n = self.n.wrapping_add(1);
 
         let heuristic = &self.cache[&(ex, ey)];
         let mut distances = vec![i16::max_value(); (self.w*self.h) as usize];
-        let mut explored = vec![false; (self.w*self.h) as usize];
         let mut heap = BinaryHeap::default();
         let mut path = FnvHashMap::default();
 
@@ -145,12 +150,10 @@ impl Navigator {
 
         while let Some(node) = heap.pop() {
 
-            // Skip explored nodes
-            explored[self.index(node.x, node.y)] = true;
-
             // Found goal
             if node.x == ex && node.y == ey { break }
             let node_index = self.index(node.x, node.y);
+            self.explored[node_index] = self.n;
             let d = distances[node_index];
 
             for &(x, y) in &self.terrain[node_index] {
@@ -158,7 +161,7 @@ impl Navigator {
                 let next_index = self.index(x, y);
                 let (da, db) = (d + 1, distances[next_index]);
 
-                if explored[next_index] || (!(x == ex && y == ey)
+                if self.explored[next_index] == self.n || (!(x == ex && y == ey)
                 && gc.can_sense_location(next) && !gc.is_occupiable(next).unwrap()) {
                     continue
                 }
