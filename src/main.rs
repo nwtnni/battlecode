@@ -26,7 +26,7 @@ const DIRECTIONS: [Direction;9] = [Center,North,Northeast,East,Southeast,South,S
 fn main() {
 
     let mut gc = GameController::new_player_env().unwrap();
-    let mut nav = Navigator::new(gc.starting_map(gc.planet()));
+    let mut nav = Navigator::new(&gc);
 
     // RESEARCH QUEUE
     gc.queue_research(Knight);
@@ -66,6 +66,8 @@ fn main() {
 
     loop {
         println!("{}", gc.get_time_left_ms());
+        nav.refresh(&gc);
+
         // Update Karb Map
         karb_locs.retain(|&loc,_| !(gc.can_sense_location(loc) && gc.karbonite_at(loc).unwrap() <= 0));
         karb_locs.iter_mut()
@@ -268,7 +270,6 @@ fn main() {
             }
         }
 
-        //println!("{}", gc.get_time_left_ms());
         gc.next_turn();
     }
 }
@@ -322,7 +323,7 @@ fn try_build(gc: &mut GameController, unit: &Unit) -> bool {
 }
 
 fn try_move_to(gc: &mut GameController, nav: &mut Navigator, unit: &Unit, loc: &MapLocation) -> bool {
-    if let Some(dir) = nav.smart(gc,&unit.location().map_location().unwrap(),loc) {
+    if let Some(dir) = nav.smart(&unit.location().map_location().unwrap(),loc) {
         if gc.is_move_ready(unit.id()) && gc.can_move(unit.id(),dir) {
             gc.move_robot(unit.id(), dir);
         }
