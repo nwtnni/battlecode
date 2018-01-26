@@ -47,7 +47,7 @@ fn main() {
     let rally = starting_en_units.get(0).map(|unit| {
         unit.location().map_location().unwrap()
     });
- 
+
     let mut karb_locs = FnvHashMap::default();
     let starting_map = gc.starting_map(gc.planet()).clone();
 
@@ -65,7 +65,8 @@ fn main() {
     let production_queue = [Knight,Knight, Knight, Knight,Healer];
 
     loop {
-        // Update Karb Map 
+        println!("{}", gc.get_time_left_ms());
+        // Update Karb Map
         karb_locs.retain(|&loc,_| !(gc.can_sense_location(loc) && gc.karbonite_at(loc).unwrap() <= 0));
         karb_locs.iter_mut()
             .filter(|&(&loc, _)| gc.can_sense_location(loc))
@@ -145,21 +146,21 @@ fn main() {
             if !worker.location().is_on_map() {
                 continue
             }
-            
+
 
             if try_build(&mut gc, worker) {
-                
+
             }
             else if fin_facts.len() + un_facts.len() < 4 && try_blueprint(&mut gc,worker,Factory) {
-                
+
             }
             else if gc.research_info().unwrap().get_level(&Rocket)>0 && try_blueprint(&mut gc,worker,Rocket){
-                
+
             }
             else if try_harvest(&mut gc, worker) {
-                
+
             }
-            
+
             if un_facts.len() > 0 {
                 try_move_to(&mut gc, &mut nav, worker, &un_facts[0].location().map_location().unwrap());
             }
@@ -171,11 +172,11 @@ fn main() {
             }
             else if karb_locs.keys().len() >0 {
                 let mut locs = karb_locs.keys().collect::<Vec<_>>();
-                locs.sort_by_key(|loc| nav.between(&worker.location().map_location().unwrap(),loc));
+                locs.sort_by_key(|loc| nav.moves_between(&worker.location().map_location().unwrap(),loc));
                 try_move_to(&mut gc, &mut nav, worker, locs[0]);
             }
         }
-        // KNIGHT 
+        // KNIGHT
         for knight in &knights {
             if !knight.location().is_on_map() {
                 continue
@@ -189,7 +190,7 @@ fn main() {
             }
 
             let mut nearby_units = gc.sense_nearby_units_by_team(knight.location().map_location().unwrap(), knight.vision_range(), gc.team().other());
-            nearby_units.sort_by_key(|en| nav.between(&knight.location().map_location().unwrap(), &en.location().map_location().unwrap()));
+            nearby_units.sort_by_key(|en| nav.moves_between(&knight.location().map_location().unwrap(), &en.location().map_location().unwrap()));
             if nearby_units.len() != 0 {
                 let friends = gc.sense_nearby_units_by_team(knight.location().map_location().unwrap(), 9, gc.team());
                 let mut enemies = gc.sense_nearby_units_by_team(knight.location().map_location().unwrap(),50, gc.team().other());
@@ -321,7 +322,7 @@ fn try_build(gc: &mut GameController, unit: &Unit) -> bool {
 }
 
 fn try_move_to(gc: &mut GameController, nav: &mut Navigator, unit: &Unit, loc: &MapLocation) -> bool {
-    if let Some(dir) = nav.navigate(gc,&unit.location().map_location().unwrap(),loc) {
+    if let Some(dir) = nav.smart(gc,&unit.location().map_location().unwrap(),loc) {
         if gc.is_move_ready(unit.id()) && gc.can_move(unit.id(),dir) {
             gc.move_robot(unit.id(), dir);
         }
@@ -364,7 +365,7 @@ fn try_load(gc: &mut GameController, rocket: &Unit) -> usize {
 // ARMY METHODS
 fn try_attack(gc: &mut GameController, nav: &mut Navigator, unit: &Unit) -> bool {
     let mut en_units = gc.sense_nearby_units_by_team(unit.location().map_location().unwrap(),unit.attack_range().unwrap(),unit.team().other());
-    en_units.sort_by_key(|en| -nav.between(&unit.location().map_location().unwrap(),&en.location().map_location().unwrap()));
+    en_units.sort_by_key(|en| -nav.moves_between(&unit.location().map_location().unwrap(),&en.location().map_location().unwrap()));
     if gc.is_attack_ready(unit.id()) {
         for enemy in en_units {
             if gc.can_attack(unit.id(),enemy.id()) {
@@ -378,7 +379,7 @@ fn try_attack(gc: &mut GameController, nav: &mut Navigator, unit: &Unit) -> bool
 
 fn try_heal(gc: &mut GameController, nav: &mut Navigator, healer: &Unit) -> bool {
     let mut units = gc.sense_nearby_units_by_team(healer.location().map_location().unwrap(), healer.attack_range().unwrap(),healer.team());
-    units.sort_by_key(|en| -nav.between(&healer.location().map_location().unwrap(),&en.location().map_location().unwrap()));
+    units.sort_by_key(|en| -nav.moves_between(&healer.location().map_location().unwrap(),&en.location().map_location().unwrap()));
     if gc.is_heal_ready(healer.id()) {
         for friend in units {
             if friend.health() != friend.max_health() && gc.can_heal(healer.id(),friend.id()) {
@@ -392,7 +393,7 @@ fn try_heal(gc: &mut GameController, nav: &mut Navigator, healer: &Unit) -> bool
 
 fn try_overcharge(gc: &mut GameController, nav: &mut Navigator, healer: &Unit) -> Option<UnitID> {
     let mut units = gc.sense_nearby_units_by_team(healer.location().map_location().unwrap(), healer.ability_range().unwrap(),healer.team());
-    units.sort_by_key(|en| -nav.between(&healer.location().map_location().unwrap(),&en.location().map_location().unwrap()));
+    units.sort_by_key(|en| -nav.moves_between(&healer.location().map_location().unwrap(),&en.location().map_location().unwrap()));
     if gc.is_overcharge_ready(healer.id()) {
         for friend in units {
             if !friend.unit_type().is_robot() || friend.unit_type() == Worker {
@@ -410,7 +411,7 @@ fn try_overcharge(gc: &mut GameController, nav: &mut Navigator, healer: &Unit) -
 
 fn try_javelin(gc: &mut GameController, nav: &mut Navigator, knight: &Unit) -> bool {
     let mut en_units = gc.sense_nearby_units_by_team(knight.location().map_location().unwrap(),knight.ability_range().unwrap(),knight.team().other());
-    en_units.sort_by_key(|en| nav.between(&knight.location().map_location().unwrap(),&en.location().map_location().unwrap()));
+    en_units.sort_by_key(|en| nav.moves_between(&knight.location().map_location().unwrap(),&en.location().map_location().unwrap()));
     if gc.is_javelin_ready(knight.id())  {
         for enemy in en_units {
             if gc.can_javelin(knight.id(),enemy.id()) {
