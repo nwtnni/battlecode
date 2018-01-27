@@ -150,16 +150,16 @@ fn main() {
             }
 
 
-            if try_build(&mut gc, worker) {
+            // if try_build(&mut gc, worker) {
 
-            }
-            else if fin_facts.len() + un_facts.len() < 4 && try_blueprint(&mut gc,worker,Factory) {
+            // }
+            // else if fin_facts.len() + un_facts.len() < 4 && try_blueprint(&mut gc,worker,Factory) {
 
-            }
-            else if gc.research_info().unwrap().get_level(&Rocket)>0 && try_blueprint(&mut gc,worker,Rocket){
+            // }
+            // else if gc.research_info().unwrap().get_level(&Rocket)>0 && try_blueprint(&mut gc,worker,Rocket){
 
-            }
-            else if try_harvest(&mut gc, worker) {
+            // }
+            if try_harvest(&mut gc, worker) {
 
             }
 
