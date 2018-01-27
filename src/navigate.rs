@@ -11,8 +11,8 @@ const AROUND: [Point; 9] = [
     (-1, -1), (0, -1), (1, -1),
 ];
 
-const SEARCH_DEPTH: i16 = 32;
-const EXPIRE_TIME: i16 = 32;
+const SEARCH_DEPTH: i16 = 16;
+const EXPIRE_TIME: i16 = 8;
 
 type Point = (i16, i16);
 
@@ -35,6 +35,7 @@ struct HNode {
 pub struct Navigator {
     w: i16,
     h: i16,
+    t: i16,
 
     // Static map information
     terrain: Vec<Vec<Point>>,
@@ -53,6 +54,7 @@ impl Navigator {
         let map = gc.starting_map(gc.planet());
         let w = map.width as i16;
         let h = map.height as i16;
+        let t = 0;
 
         let mut terrain = vec![Vec::new(); (w*h) as usize];
         let enemies = FnvHashSet::default();
@@ -75,7 +77,7 @@ impl Navigator {
                 }
             }
         }
-        Navigator { w, h, terrain, cache, enemies,
+        Navigator { w, h, t, terrain, cache, enemies,
             expiration, reserved, routes, targets
         }
     }
@@ -89,14 +91,13 @@ impl Navigator {
             .map(|enemy| (enemy.x as i16, enemy.y as i16))
             .collect::<FnvHashSet<_>>();
 
+        self.t += 1;
         for (id, expiration) in self.expiration.iter_mut() {
-            *expiration -= 1;
             if *expiration == 0 {
                 self.targets.remove(id).unwrap();
                 for point in self.routes.remove(id).unwrap() {
                     self.reserved.remove(&point);
                 }
-                // println!("Pruning unit {}", id);
             }
         }
         self.expiration.retain(|_, &mut expiration| expiration != 0);
@@ -122,20 +123,21 @@ impl Navigator {
         }
         else if let Some(&(x, y)) = self.targets.get(&id) {
             if x == ex && y == ey {
-                let route = &self.routes[&id];
-                // println!("Unit going from ({}, {}) to ({}, {})", sx, sy, ex, ey);
-                // println!("Route: {:?}", route);
+                let route = self.routes.get_mut(&id).unwrap();
+                println!("Route for {} from ({}, {}) to ({}, {}): {:?}",
+                    id, sx, sy, ex, ey, route);
                 let len = route.len();
-                let mut i = 0;
-                while i + 2 < len {
-                    let (nx, ny, _) = route[i];
-                    let (px, py, _) = route[i + 2];
-                    if px == sx && py == sy {
-                        return Self::to_direction(nx - px, ny - py)
-                    }
-                    i += 2;
+                let (nx, ny, _) = route[len - 2];
+                let (px, py, t) = route[len - 1];
+                if px == sx && py == sy {
+                    route.remove(len - 1);
+                    let exp = self.expiration[&id];
+                    self.reserved.remove(&(px, py, t));
+                    self.expiration.insert(id, exp - 1);
+                    return Self::to_direction(nx - px, ny - py)
+                } else {
+                    return None
                 }
-                return None
             } else {
                 self.expiration.remove(&id).unwrap();
                 self.targets.remove(&id).unwrap();
@@ -203,7 +205,7 @@ impl Navigator {
         let mut found = -1;
 
         distances[self.index(sx, sy)] = 0;
-        heap.push(HNode { h: 0, d: 0, x: sx, y: sy });
+        heap.push(HNode { h: self.t, d: self.t, x: sx, y: sy });
 
         while let Some(node) = heap.pop() {
             // Found goal
@@ -223,11 +225,10 @@ impl Navigator {
             } else {
                 for &(x, y) in &self.terrain[node_index] {
                     let next_index = self.index(x, y);
-                    let (da, db) = (d + 1, distances[next_index]);
-
-                    if !self.reserved.contains(&(x, y, da))
-                    && (!self.enemies.contains(&(x, y)) || (x == ex && y == ey))
-                    && da < db {
+                    let da = d + 1;
+                    if (x == ex && y == ey)
+                    || (!self.reserved.contains(&(x, y, da))
+                    && !self.enemies.contains(&(x, y))) {
                         distances[next_index] = da;
                         path.insert((x, y, da), (node.x, node.y, d));
                         heap.push(HNode { h: da + heuristic[next_index], d: da , x, y });
@@ -242,23 +243,19 @@ impl Navigator {
             let end = frontier.into_iter().min();
             match end {
                 Some(point) => (point.x, point.y, point.d),
-                None => (sx, sy, 0),
+                None => (sx, sy, self.t),
             }
         };
 
         while let Some(&prev) = path.get(&node) {
-            let (x1, y1, _) = prev;
-            let (x2, y2, t2) = node;
-            route.push((x2, y2, t2));
-            route.push((x1, y1, t2));
-            self.reserved.insert((x2, y2, t2));
-            self.reserved.insert((x1, y1, t2));
-            if prev == (sx, sy, 0) { break } else { node = prev; }
+            route.push(node);
+            self.reserved.insert(node);
+            if prev == (sx, sy, self.t) { break } else { node = prev; }
         }
+        println!("Found route: {:?} plus ({}, {})", route, sx, sy);
 
-        route.push((sx, sy, 0));
         self.expiration.insert(id, EXPIRE_TIME);
-        self.reserved.insert((sx, sy, 0));
+        self.reserved.insert((sx, sy, self.t));
         self.routes.insert(id, route);
         self.targets.insert(id, (ex, ey));
         Self::to_direction(node.0 - sx, node.1 - sy)
