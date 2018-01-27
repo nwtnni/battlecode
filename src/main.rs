@@ -323,7 +323,7 @@ fn try_build(gc: &mut GameController, unit: &Unit) -> bool {
 }
 
 fn try_move_to(gc: &mut GameController, nav: &mut Navigator, unit: &Unit, loc: &MapLocation) -> bool {
-    if let Some(dir) = nav.smart(&unit.location().map_location().unwrap(),loc) {
+    if let Some(dir) = nav.navigate(&unit, loc) {
         if gc.is_move_ready(unit.id()) && gc.can_move(unit.id(),dir) {
             gc.move_robot(unit.id(), dir);
         }

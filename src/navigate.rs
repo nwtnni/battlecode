@@ -1,10 +1,9 @@
 use fnv::*;
 use std::collections::BinaryHeap;
 use std::cmp::Ordering;
-use engine::map::*;
 use engine::controller::*;
 use engine::location::*;
-use engine::world::*;
+use engine::unit::*;
 
 const AROUND: [Point; 9] = [
     (-1, 1), (0, 1), (1, 1),
@@ -12,7 +11,8 @@ const AROUND: [Point; 9] = [
     (-1, -1), (0, -1), (1, -1),
 ];
 
-const SEARCH_DEPTH: i16 = 8;
+const SEARCH_DEPTH: i16 = 32;
+const EXPIRE_TIME: i16 = 32;
 
 type Point = (i16, i16);
 
@@ -35,10 +35,17 @@ struct HNode {
 pub struct Navigator {
     w: i16,
     h: i16,
+
+    // Static map information
     terrain: Vec<Vec<Point>>,
     enemies: FnvHashSet<Point>,
-    reserve: FnvHashSet<(i16, i16, i16)>,
     cache: FnvHashMap<Point, Vec<i16>>,
+
+    // Dynamic ally information
+    expiration: FnvHashMap<u16, i16>,
+    reserved: FnvHashSet<(i16, i16, i16)>,
+    routes: FnvHashMap<u16, Vec<(i16, i16, i16)>>,
+    targets: FnvHashMap<u16, (i16, i16)>,
 }
 
 impl Navigator {
@@ -48,9 +55,12 @@ impl Navigator {
         let h = map.height as i16;
 
         let mut terrain = vec![Vec::new(); (w*h) as usize];
-        let cache = FnvHashMap::default();
         let enemies = FnvHashSet::default();
-        let reserve = FnvHashSet::default();
+        let cache = FnvHashMap::default();
+        let expiration = FnvHashMap::default();
+        let routes = FnvHashMap::default();
+        let reserved = FnvHashSet::default();
+        let targets = FnvHashMap::default();
 
         for y in 0..h {
             for x in 0..w {
@@ -65,7 +75,9 @@ impl Navigator {
                 }
             }
         }
-        Navigator { w, h, terrain, cache, reserve, enemies }
+        Navigator { w, h, terrain, cache, enemies,
+            expiration, reserved, routes, targets
+        }
     }
 
     pub fn refresh(&mut self, gc: &GameController) {
@@ -76,7 +88,18 @@ impl Navigator {
             .map(|enemy| enemy.location().map_location().unwrap())
             .map(|enemy| (enemy.x as i16, enemy.y as i16))
             .collect::<FnvHashSet<_>>();
-        self.reserve.clear();
+
+        for (id, expiration) in self.expiration.iter_mut() {
+            *expiration -= 1;
+            if *expiration == 0 {
+                self.targets.remove(id).unwrap();
+                for point in self.routes.remove(id).unwrap() {
+                    self.reserved.remove(&point);
+                }
+                // println!("Pruning unit {}", id);
+            }
+        }
+        self.expiration.retain(|_, &mut expiration| expiration != 0);
     }
 
     pub fn moves_between(&mut self, start: &MapLocation, end: &MapLocation) -> i16 {
@@ -88,12 +111,44 @@ impl Navigator {
         self.cache[&(ex, ey)][self.index(sx, sy)]
     }
 
-    pub fn smart(&mut self, start: &MapLocation, end: &MapLocation) -> Option<Direction> {
+    pub fn navigate(&mut self, unit: &Unit, end: &MapLocation) -> Option<Direction> {
+        let id = unit.id();
+        let start = unit.location().map_location().unwrap();
+        let (sx, sy) = (start.x as i16, start.y as i16);
         let (ex, ey) = (end.x as i16, end.y as i16);
+
+        if sx == ex && sy == ey {
+            return None
+        }
+        else if let Some(&(x, y)) = self.targets.get(&id) {
+            if x == ex && y == ey {
+                let route = &self.routes[&id];
+                // println!("Unit going from ({}, {}) to ({}, {})", sx, sy, ex, ey);
+                // println!("Route: {:?}", route);
+                let len = route.len();
+                let mut i = 0;
+                while i + 2 < len {
+                    let (nx, ny, _) = route[i];
+                    let (px, py, _) = route[i + 2];
+                    if px == sx && py == sy {
+                        return Self::to_direction(nx - px, ny - py)
+                    }
+                    i += 2;
+                }
+                return None
+            } else {
+                self.expiration.remove(&id).unwrap();
+                self.targets.remove(&id).unwrap();
+                for point in self.routes.remove(&id).unwrap() {
+                    self.reserved.remove(&point);
+                }
+            }
+        }
+
         if !self.cache.contains_key(&(ex, ey)) {
             self.cache_bfs(end);
         }
-        self.a_star(start, end)
+        self.a_star(id, &start, end)
     }
 
     fn index(&self, x: i16, y: i16) -> usize { (y*self.w + x) as usize }
@@ -135,7 +190,7 @@ impl Navigator {
         self.cache.insert((ex, ey), distances);
     }
 
-    fn a_star(&mut self, start: &MapLocation, end: &MapLocation) -> Option<Direction> {
+    fn a_star(&mut self, id: u16, start: &MapLocation, end: &MapLocation) -> Option<Direction> {
         if start == end { return None }
         let (sx, sy) = (start.x as i16, start.y as i16);
         let (ex, ey) = (end.x as i16, end.y as i16);
@@ -170,7 +225,7 @@ impl Navigator {
                     let next_index = self.index(x, y);
                     let (da, db) = (d + 1, distances[next_index]);
 
-                    if !self.reserve.contains(&(x, y, da))
+                    if !self.reserved.contains(&(x, y, da))
                     && (!self.enemies.contains(&(x, y)) || (x == ex && y == ey))
                     && da < db {
                         distances[next_index] = da;
@@ -182,6 +237,7 @@ impl Navigator {
         }
 
         // Retrace path
+        let mut route = Vec::new();
         let mut node = if found >= 0 { (ex, ey, found) } else {
             let end = frontier.into_iter().min();
             match end {
@@ -193,12 +249,18 @@ impl Navigator {
         while let Some(&prev) = path.get(&node) {
             let (x1, y1, _) = prev;
             let (x2, y2, t2) = node;
-            self.reserve.insert((x1, y1, t2));
-            self.reserve.insert((x2, y2, t2));
+            route.push((x2, y2, t2));
+            route.push((x1, y1, t2));
+            self.reserved.insert((x2, y2, t2));
+            self.reserved.insert((x1, y1, t2));
             if prev == (sx, sy, 0) { break } else { node = prev; }
         }
 
-        self.reserve.insert((sx, sy, 0));
+        route.push((sx, sy, 0));
+        self.expiration.insert(id, EXPIRE_TIME);
+        self.reserved.insert((sx, sy, 0));
+        self.routes.insert(id, route);
+        self.targets.insert(id, (ex, ey));
         Self::to_direction(node.0 - sx, node.1 - sy)
     }
 }
