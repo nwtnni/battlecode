@@ -186,7 +186,8 @@ fn main() {
 
         // KNIGHT
         for knight in &knights {
-            try_attack(&mut gc, &mut nav, knight) || try_javelin(&mut gc, &mut nav, knight);
+            try_attack(&mut gc, &mut nav, knight); 
+            try_javelin(&mut gc, &mut nav, knight);
 
             let knight_loc = loc(knight);
 
@@ -196,8 +197,8 @@ fn main() {
                 let friends = gc.sense_nearby_units_by_team(knight_loc, 9, gc.team());
                 let mut enemies = gc.sense_nearby_units_by_team(knight_loc, 50, gc.team().other());
                 enemies.retain(|en| en.unit_type().is_robot() && en.unit_type() != Worker && en.unit_type() != Healer);
-                enemies.retain(|en| loc(en).distance_squared_to(knight_loc) < en.attack_range().unwrap());
-                if friends.len() >= enemies.len() {
+                enemies.retain(|en| loc(en).distance_squared_to(knight_loc) <= en.attack_range().unwrap());
+                if friends.len() >= enemies.len() || (enemies.len() != 0 && nav.moves_between(&knight_loc, &loc(&nearby_units[0])) <= 3) {
                     try_move_to(&mut nav, knight, &loc(&nearby_units[0]));
                 }
                 else {
@@ -227,7 +228,7 @@ fn main() {
                 let mut enemies = gc.sense_nearby_units_by_team(ranger_loc, 50, gc.team().other());
                 enemies.retain(|en| en.unit_type().is_robot() && en.unit_type() != Worker && en.unit_type() != Healer);
                 enemies.retain(|en| loc(en).distance_squared_to(ranger_loc) < en.attack_range().unwrap());
-                if friends.len() <= enemies.len() {
+                if friends.len() < enemies.len() || enemies.len() != 0 && nav.moves_between(&ranger_loc, &loc(&enemies[0])) <= 5 {
                     let my_loc = ranger_loc;
                     let en_loc = loc(&nearby_units[0]);
                     if start != None {
@@ -249,12 +250,28 @@ fn main() {
         for healer in &healers {
 
             try_heal(&mut gc, &mut nav, healer);
+            let healer_loc = loc(healer);
 
             if let Some(overcharged) = try_overcharge(&mut gc, &mut nav, healer) {
                 overcharged_units.push(overcharged);
             }
 
-            if fin_rockets.len() != 0 {
+            let mut nearby_units = gc.sense_nearby_units_by_team(healer_loc, 50, gc.team().other());
+            nearby_units.sort_by_key(|en| nav.moves_between(&healer_loc, &loc(en)));
+            if nearby_units.len() != 0 {
+                let friends = gc.sense_nearby_units_by_team(healer_loc, 25, gc.team());
+                let mut enemies = gc.sense_nearby_units_by_team((healer_loc), 50, gc.team().other());
+                enemies.retain(|en| en.unit_type().is_robot() && en.unit_type() != Worker && en.unit_type() != Healer);
+                enemies.retain(|en| loc(en).distance_squared_to(healer_loc) < en.attack_range().unwrap());
+                if friends.len() < enemies.len() || enemies.len() != 0 && nav.moves_between(&healer_loc, &loc(&enemies[0])) <= 5 {
+                    let my_loc = healer_loc;
+                    let en_loc = loc(&nearby_units[0]);
+                    if start != None {
+                        try_move_to(&mut nav, healer, &start.unwrap());
+                    }
+                }
+            }
+            else if fin_rockets.len() != 0 {
                 try_move_to(&mut nav, healer, &loc(&fin_rockets[0]));
             }
             else if rally != None {
@@ -269,7 +286,7 @@ fn main() {
 
         nav.execute(&mut gc);
 
-        for knight in &knights { try_attack(&mut gc, &mut nav, knight) || try_javelin(&mut gc, &mut nav, knight); }
+        for knight in &knights { try_attack(&mut gc, &mut nav, knight); try_javelin(&mut gc, &mut nav, knight); }
         for ranger in &rangers { try_attack(&mut gc, &mut nav, ranger); }
         for healer in &healers { try_heal(&mut gc, &mut nav, healer); }
 
@@ -367,7 +384,7 @@ fn try_load(gc: &mut GameController, rocket: &Unit) -> usize {
 // ARMY METHODS
 fn try_attack(gc: &mut GameController, nav: &mut Navigator, unit: &Unit) -> bool {
     let mut en_units = gc.sense_nearby_units_by_team(loc(unit) ,unit.attack_range().unwrap(),unit.team().other());
-    en_units.sort_by_key(|en| -nav.moves_between(&loc(unit) ,&loc(en)));
+    en_units.sort_by_key(|en| en.health());
     if gc.is_attack_ready(unit.id()) {
         for enemy in en_units {
             if gc.can_attack(unit.id(),enemy.id()) {
