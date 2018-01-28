@@ -63,7 +63,7 @@ fn main() {
     }
 
     let mut prod_num = 0;
-    let production_queue = [Knight,Knight, Knight,Healer];
+    let production_queue = [Knight,Knight, Knight,Healer,Ranger];
 
     let mut seen_locs = FnvHashMap::default();
 
@@ -121,8 +121,9 @@ fn main() {
                 try_produce(&mut gc,fact,Worker);
             }
             else if !(gc.research_info().unwrap().get_level(&Rocket) > 0 && un_rockets.len() + fin_rockets.len() ==0) {
-                try_produce(&mut gc, fact, production_queue[prod_num%production_queue.len()]);
-                prod_num = (prod_num+1)%production_queue.len();
+                if try_produce(&mut gc, fact, production_queue[prod_num%production_queue.len()]) {
+                    prod_num = (prod_num+1)%production_queue.len();
+                }
             }
             try_unload(&mut gc,fact)
         }
@@ -245,7 +246,23 @@ fn main() {
 
             if try_attack(&mut gc, &mut nav, ranger) {
             }
-            if fin_rockets.len() != 0 {
+
+            let mut nearby_units = gc.sense_nearby_units_by_team(ranger.location().map_location().unwrap(), 50, gc.team().other());
+            nearby_units.sort_by_key(|en| nav.moves_between(&ranger.location().map_location().unwrap(), &en.location().map_location().unwrap()));
+            if nearby_units.len() != 0 {
+                let friends = gc.sense_nearby_units_by_team(ranger.location().map_location().unwrap(), 25, gc.team());
+                let mut enemies = gc.sense_nearby_units_by_team(ranger.location().map_location().unwrap(),50, gc.team().other());
+                enemies.retain(|en| en.unit_type().is_robot() && en.unit_type() != Worker && en.unit_type() != Healer);
+                enemies.retain(|en| en.location().map_location().unwrap().distance_squared_to(ranger.location().map_location().unwrap()) < en.attack_range().unwrap());
+                if friends.len() <= enemies.len() {
+                    let my_loc = ranger.location().map_location().unwrap();
+                    let en_loc = nearby_units[0].location().map_location().unwrap();
+                    if start != None {
+                        try_move_to(&mut gc, &mut nav, ranger, &start.unwrap());
+                    }
+                }
+            }
+            else if fin_rockets.len() != 0 {
                 try_move_to(&mut gc, &mut nav, ranger, &fin_rockets[0].location().map_location().unwrap());
             }
             else if rally != None && try_move_to(&mut gc, &mut nav, ranger, &rally.unwrap()) {
