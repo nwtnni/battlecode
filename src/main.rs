@@ -158,20 +158,20 @@ fn main() {
             // else if gc.research_info().unwrap().get_level(&Rocket)>0 && try_blueprint(&mut gc,worker,Rocket){
 
             // }
-            // if try_harvest(&mut gc, worker) {
+            if try_harvest(&mut gc, worker) {
 
-            // }
+            }
 
-            // if un_facts.len() > 0 {
-            //     try_move_to(&mut gc, &mut nav, worker, &un_facts[0].location().map_location().unwrap());
-            // }
-            // else if un_rockets.len() > 0{
-            //     try_move_to(&mut gc, &mut nav, worker, &un_rockets[0].location().map_location().unwrap());
-            // }
-            // else if fin_rockets.len() > 0 && gc.planet() != Planet::Mars {
-            //     try_move_to(&mut gc, &mut nav, worker, &fin_rockets[0].location().map_location().unwrap());
-            // }
-            if karb_locs.keys().len() >0 {
+            if un_facts.len() > 0 {
+                try_move_to(&mut gc, &mut nav, worker, &un_facts[0].location().map_location().unwrap());
+            }
+            else if un_rockets.len() > 0{
+                try_move_to(&mut gc, &mut nav, worker, &un_rockets[0].location().map_location().unwrap());
+            }
+            else if fin_rockets.len() > 0 && gc.planet() != Planet::Mars {
+                try_move_to(&mut gc, &mut nav, worker, &fin_rockets[0].location().map_location().unwrap());
+            }
+            else if karb_locs.keys().len() >0 {
                 let mut locs = karb_locs.keys().collect::<Vec<_>>();
                 locs.sort_by_key(|loc| nav.moves_between(&worker.location().map_location().unwrap(),loc));
                 try_move_to(&mut gc, &mut nav, worker, locs[0]);
@@ -322,9 +322,11 @@ fn try_build(gc: &mut GameController, unit: &Unit) -> bool {
 }
 
 fn try_move_to(gc: &mut GameController, nav: &mut Navigator, unit: &Unit, loc: &MapLocation) -> bool {
-    if let Some(dir) = nav.navigate(&unit, loc) {
+    let origin = MapLocation::new(gc.planet(), 0, 0);
+    if let Some(dir) = nav.navigate(&unit, &origin) {
         if gc.is_move_ready(unit.id()) && gc.can_move(unit.id(),dir) {
             gc.move_robot(unit.id(), dir);
+            println!("Successfully moved robot {}", unit.id());
         }
         return true
     }
