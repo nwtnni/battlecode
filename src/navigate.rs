@@ -147,7 +147,7 @@ impl Navigator {
         if !self.cache.contains_key(&(ex, ey)) {
             self.cache_bfs(end);
         }
-        self.a_star(id, &start, end)
+        self.a_star(unit, &start, end)
     }
 
     fn index(&self, x: Distance, y: Distance) -> usize { (y*self.w + x) as usize }
@@ -189,25 +189,21 @@ impl Navigator {
         self.cache.insert((ex, ey), distances);
     }
 
-    fn a_star(&mut self, unit: &Unit, start: &MapLocation, end: &MapLocation) {
-        if start == end { return }
+    fn a_star(&mut self, unit: &Unit, start: &MapLocation, end: &MapLocation) -> Option<Direction> {
+        if start == end { return None }
         let (sx, sy) = (start.x as Distance, start.y as Distance);
         let (ex, ey) = (end.x as Distance, end.y as Distance);
         let start_index = self.index(sx, sy);
 
         let heuristic = &self.cache[&(ex, ey)];
         let max_depth = SEARCH_DEPTH + self.t;
+
+        let id = unit.id();
         let cd = unit.movement_cooldown().unwrap() as Heat;
+
         let mut distances = vec![i8::max_value(); (self.w*self.h) as usize];
         let mut heap = BinaryHeap::default();
         let mut path = FnvHashMap::default();
-        let mut best = ANode {
-            a: heuristic[start_index] + SEARCH_DEPTH as Distance,
-            x: sx,
-            y: sy,
-            t: self.t + SEARCH_DEPTH,
-            h: unit.movement_heat().unwrap() as Heat,
-        };
 
         distances[self.index(sx, sy)] = 0;
         heap.push(ANode {
@@ -221,29 +217,52 @@ impl Navigator {
         while let Some(node) = heap.pop() {
 
             // End search
-            if node.t == max_depth { best = node; break }
+            if node.t == max_depth {
+                let mut route = Vec::new();
+                let mut current = (node.x, node.y, node.t);
+
+                while let Some(&prev) = path.get(&current) {
+                    route.push(current);
+                    self.reserved.insert(current);
+                    if prev == (sx, sy, self.t) { break } else { current = prev }
+                }
+
+                route.push((sx, sy, self.t));
+                self.expiration.insert(id, EXPIRE_TIME);
+                self.reserved.insert((sx, sy, self.t));
+                self.routes.insert(id, route);
+                self.targets.insert(id, (ex, ey));
+                return Self::to_direction(current.0 - sx, current.1 - sy)
+            }
+
             let node_index = self.index(node.x, node.y);
 
-            // Otherwise
-            if node.h > MAX_HEAT {
-                let cost = if node.x == ex && node.y == ey { 0 } else { 1 };
-                if !self.reserved.contains(&(node.x, node.y, node.t + 1))
-                && !self.enemies.contains(&(node.x, node.y)) {
-                    heap.push(ANode {
-                        a: node.a + cost,
-                        x: node.x,
-                        y: node.y,
-                        t: node.t + 1,
-                        h: node.h - MAX_HEAT,
-                    });
-                    path.insert
-                }
-            } else {
-                for (x, y) in self.terrain[node_index] {
+            // Staying still is always an option
+            let next_cost = if node.x == ex && node.y == ey { node.a } else { node.a + 1 };
+            let next_heat = if node.h < MAX_HEAT { 0 } else { node.h - MAX_HEAT };
+            if !self.reserved.contains(&(node.x, node.y, node.t + 1))
+            && !self.enemies.contains(&(node.x, node.y)) {
+                path.insert((node.x, node.y, node.t + 1),
+                            (node.x, node.y, node.t));
+                heap.push(ANode {
+                    a: next_cost,
+                    x: node.x,
+                    y: node.y,
+                    t: node.t + 1,
+                    h: next_heat,
+                });
+            }
+
+            // Able to move if under max heat
+            if node.h < MAX_HEAT {
+                let turns = (node.t + 1 - self.t) as Distance;
+                for &(x, y) in &self.terrain[node_index] {
                     if !self.reserved.contains(&(x, y, node.t + 1))
                     && !self.enemies.contains(&(x, y)) {
+                        path.insert((x, y, node.t + 1),
+                                    (node.x, node.y, node.t));
                         heap.push(ANode {
-                            a: heuristic[self.index(x, y)] + node.a + 1,
+                            a: heuristic[self.index(x, y)] + turns,
                             x: x,
                             y: y,
                             t: node.t + 1,
@@ -252,7 +271,8 @@ impl Navigator {
                     }
                 }
             }
-        };
+        }
+        None
     }
 }
 
