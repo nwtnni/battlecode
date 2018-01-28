@@ -125,7 +125,6 @@ fn main() {
                 let loc = MapLocation::new(Planet::Mars,x as i32,y as i32);
                 if starting_map.is_passable_terrain_at(loc).unwrap() {
                     rally = Some(loc);
-                    println!("Changed to {:?}",loc);
                 }
             }
         }
@@ -172,7 +171,7 @@ fn main() {
                 let period = gc.orbit_pattern().period;
                 let amplitude = gc.orbit_pattern().amplitude;
                 let velocity = amplitude as f64 *2.0 as f64 *PI/period as f64 * (gc.round() as f64 *2.0 as f64 *PI/period as f64).cos();
-                println!("Round: {}, Period: {}, Amplitude: {}, Velocity: {:?}",gc.round(),period, amplitude, velocity);
+                
                 if (rocket.structure_garrison().unwrap().len() + num_loaded >= 8 && velocity < 1.0) || (rocket.health() != rocket.max_health() && rocket.structure_garrison().unwrap().len() + num_loaded > 0){
                     let x_range = Range::new(0, gc.starting_map(Planet::Mars).width);
                     let y_range = Range::new(0, gc.starting_map(Planet::Mars).height);
@@ -183,7 +182,6 @@ fn main() {
                     let loc = MapLocation::new(Planet::Mars,x as i32,y as i32);
                     if gc.can_launch_rocket(rocket.id(),loc) {
                         gc.launch_rocket(rocket.id(),loc);
-                        println!("LAUNCH");
                     }
                 }
             }
@@ -434,9 +432,17 @@ fn try_load(gc: &mut GameController, rocket: &Unit) -> usize {
 // ARMY METHODS
 fn try_attack(gc: &mut GameController, nav: &mut Navigator, unit: &Unit) -> bool {
     let mut en_units = gc.sense_nearby_units_by_team(loc(unit) ,unit.attack_range().unwrap(),unit.team().other());
-    en_units.sort_by_key(|en| en.health());
+    let (mut worker, mut other):(Vec<_>,Vec<_>) = en_units.into_iter().partition(|en| en.unit_type() == Worker);
+    worker.sort_by_key(|en| en.health());
+    other.sort_by_key(|en| en.health());
     if gc.is_attack_ready(unit.id()) {
-        for enemy in en_units {
+        for enemy in other {
+            if gc.can_attack(unit.id(),enemy.id()) {
+                gc.attack(unit.id(),enemy.id());
+                return true
+            }
+        }
+        for enemy in worker {
             if gc.can_attack(unit.id(),enemy.id()) {
                 gc.attack(unit.id(),enemy.id());
                 return true
