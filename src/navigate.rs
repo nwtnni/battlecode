@@ -125,7 +125,7 @@ impl Navigator {
 
         for &(dx, dy) in &AROUND {
             let (nx, ny) = (sx + dx, sy + dy);
-            if nx < 0 || nx >= self.w || ny < 0 || ny >= self.w { continue }
+            if nx < 0 || nx >= self.w || ny < 0 || ny >= self.h { continue }
             let distance = distances[self.index(nx, ny)];
             let target = MapLocation::new(start.planet, nx as i32, ny as i32);
             if distance < min && (!gc.can_sense_location(target) || gc.is_occupiable(target).unwrap()) {

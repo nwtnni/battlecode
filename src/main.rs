@@ -44,7 +44,8 @@ fn main() {
         unit.location().map_location().unwrap()
     });
     let starting_en_units = gc.starting_map(gc.planet()).initial_units.iter().filter(|unit| unit.team()== gc.team().other()).cloned().collect::<Vec<_>>();
-    let rally = starting_en_units.get(0).map(|unit| {
+    let mut loc_num = 0;
+    let mut rally = starting_en_units.get(loc_num).map(|unit| {
         unit.location().map_location().unwrap()
     });
 
@@ -67,6 +68,8 @@ fn main() {
     let mut seen_locs = FnvHashMap::default();
 
     loop {
+        println!("Round: {}",gc.round());
+
         // Update Karb Map
         karb_locs.retain(|&loc,_| !(gc.can_sense_location(loc) && gc.karbonite_at(loc).unwrap() <= 0));
         karb_locs.iter_mut()
@@ -82,6 +85,14 @@ fn main() {
         }
 
         seen_locs.iter_mut().for_each(|(_, time)| *time += 1);
+        if rally != None && gc.has_unit_at_location(rally.unwrap()) && gc.sense_unit_at_location(rally.unwrap()).unwrap().team() == gc.team() && gc.sense_unit_at_location(rally.unwrap()).unwrap().unit_type() != Worker {
+            loc_num = (loc_num +1)%starting_en_units.len();
+            if loc_num < starting_en_units.len() {
+                rally = starting_en_units.get(loc_num).map(|unit| {
+                    unit.location().map_location().unwrap()
+                });
+            }
+        }
 
         for x in 0..starting_map.width {
             for y in 0..starting_map.height {
@@ -158,7 +169,6 @@ fn main() {
             if !worker.location().is_on_map() {
                 continue
             }
-
 
             if try_build(&mut gc, worker) {
 
