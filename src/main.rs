@@ -62,10 +62,11 @@ fn main() {
     }
 
     let mut prod_num = 0;
-    let production_queue = [Knight,Knight, Knight, Knight,Healer];
+    let production_queue = [Knight,Knight, Knight,Healer];
+
+    let mut seen_locs = FnvHashMap::default();
 
     loop {
-        println!("{}", gc.get_time_left_ms());
         // Update Karb Map
         karb_locs.retain(|&loc,_| !(gc.can_sense_location(loc) && gc.karbonite_at(loc).unwrap() <= 0));
         karb_locs.iter_mut()
@@ -77,6 +78,17 @@ fn main() {
                 let asteroid_pattern = gc.asteroid_pattern();
                 let asteroid = asteroid_pattern.asteroid(gc.round()).unwrap();
                 karb_locs.insert(asteroid.location, asteroid.karbonite);
+            }
+        }
+
+        seen_locs.iter_mut().for_each(|(_, time)| *time += 1);
+
+        for x in 0..starting_map.width {
+            for y in 0..starting_map.height {
+                let loc = MapLocation::new(gc.planet(),x as i32,y as i32);
+                if gc.can_sense_location(loc) && starting_map.is_passable_terrain_at(loc).unwrap() {
+                    seen_locs.insert(loc, 0);
+                }
             }
         }
 
@@ -151,7 +163,7 @@ fn main() {
             if try_build(&mut gc, worker) {
 
             }
-            else if fin_facts.len() + un_facts.len() < 4 && try_blueprint(&mut gc,worker,Factory) {
+            else if fin_facts.len() + un_facts.len() < 5 && try_blueprint(&mut gc,worker,Factory) {
 
             }
             else if gc.research_info().unwrap().get_level(&Rocket)>0 && try_blueprint(&mut gc,worker,Rocket){
@@ -189,12 +201,13 @@ fn main() {
 
             }
 
-            let mut nearby_units = gc.sense_nearby_units_by_team(knight.location().map_location().unwrap(), knight.vision_range(), gc.team().other());
+            let mut nearby_units = gc.sense_nearby_units_by_team(knight.location().map_location().unwrap(), knight.vision_range()*2, gc.team().other());
             nearby_units.sort_by_key(|en| nav.moves_between(&knight.location().map_location().unwrap(), &en.location().map_location().unwrap()));
             if nearby_units.len() != 0 {
                 let friends = gc.sense_nearby_units_by_team(knight.location().map_location().unwrap(), 9, gc.team());
                 let mut enemies = gc.sense_nearby_units_by_team(knight.location().map_location().unwrap(),50, gc.team().other());
-                enemies.retain(|en| en.unit_type().is_robot() && en.unit_type() != Worker);
+                enemies.retain(|en| en.unit_type().is_robot() && en.unit_type() != Worker && en.unit_type() != Healer);
+                enemies.retain(|en| en.location().map_location().unwrap().distance_squared_to(knight.location().map_location().unwrap()) < en.attack_range().unwrap());
                 if friends.len() >= enemies.len() {
                     try_move_to(&mut gc, &mut nav, knight, &nearby_units[0].location().map_location().unwrap());
                 }
@@ -255,9 +268,6 @@ fn main() {
             }
         }
 
-        if overcharged_units.len() > 0 {
-            println!("OVERCHARGING!: {:?}",overcharged_units);
-        }
         for unit_id in overcharged_units {
             let unit = gc.unit(unit_id).unwrap();
             if try_attack(&mut gc, &mut nav, &unit) {
@@ -267,8 +277,6 @@ fn main() {
 
             }
         }
-
-        //println!("{}", gc.get_time_left_ms());
         gc.next_turn();
     }
 }
@@ -322,7 +330,7 @@ fn try_build(gc: &mut GameController, unit: &Unit) -> bool {
 }
 
 fn try_move_to(gc: &mut GameController, nav: &mut Navigator, unit: &Unit, loc: &MapLocation) -> bool {
-    if let Some(dir) = nav.smart(gc,&unit.location().map_location().unwrap(),loc) {
+    if let Some(dir) = nav.dumb(gc,&unit.location().map_location().unwrap(),loc) {
         if gc.is_move_ready(unit.id()) && gc.can_move(unit.id(),dir) {
             gc.move_robot(unit.id(), dir);
         }
