@@ -83,6 +83,9 @@ fn main() {
     let mut seen_locs = FnvHashMap::default();
 
     loop {
+        if gc.get_time_left_ms() < 500 {
+            gc.next_turn();
+        }
         nav.refresh(&gc);
 
         let mut total_karb = 0;
