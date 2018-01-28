@@ -5,6 +5,7 @@ use engine::controller::*;
 use engine::location::*;
 use engine::unit::*;
 use navigate::*;
+use influence::*;
 
 const WORKERS_PER_FACTORY: usize = 4;
 const WORKERS_PER_ROCKET: usize = 4;
@@ -16,6 +17,39 @@ type Karbonite = FnvHashMap<MapLocation, u32>;
 
 fn loc(unit: &Unit) -> MapLocation {
     unit.location().map_location().unwrap()
+}
+
+pub fn assign_soldiers(gc: &GameController, nav: &mut Navigator) {
+    let influence_map = influence(gc);
+    let soldiers = gc.my_units().into_iter()
+        .filter(|unit| unit.location().is_on_map())
+        .filter(|unit| {
+            match unit.unit_type() {
+                UnitType::Knight | UnitType::Ranger | UnitType::Mage | UnitType::Healer => true,
+                _ => false,
+            }
+        }).collect::<Vec<_>>();
+
+    if soldiers.len() <= 0 { return }
+    let planet = gc.planet();
+    let mut optimize = Vec::new(); 
+    for soldier in &soldiers {
+        let mut row = Vec::new(); 
+        for &(x, y, i) in &influence_map {
+            let soldier_loc = loc(soldier);
+            let location = MapLocation::new(planet, x, y);
+            let priority = i + nav.moves_between(&soldier_loc, &location) as i16;
+            row.push(priority);
+        }
+        optimize.push(row);
+    }
+
+    if optimize.len() > 0 && optimize[0].len() > 0 {
+        for (soldier, location) in hungarian(optimize) {
+            let (x, y, _) = influence_map[location];
+            nav.navigate(&soldiers[soldier], &MapLocation::new(planet, x, y));
+        }
+    }
 }
 
 pub fn assign_workers(nav: &mut Navigator, workers: Vec<Unit>, karbonite: &Karbonite,
