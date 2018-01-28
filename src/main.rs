@@ -162,10 +162,7 @@ fn main() {
             }
         }
 
-        let workers = get_type(&gc, Worker)
-            .into_iter()
-            .filter(|worker| worker.location().is_on_map())
-            .collect::<Vec<_>>();
+        let workers = get_type(&gc, Worker);
 
         // WORKER
         for worker in &workers {
@@ -174,13 +171,9 @@ fn main() {
             }
         }
 
-        let workers = get_type(&gc, Worker)
-            .into_iter()
-            .filter(|worker| worker.location().is_on_map())
-            .collect::<Vec<_>>();
+        let workers = get_type(&gc, Worker);
 
         for worker in &workers {
-
             if try_build(&mut gc, worker) {
 
             }
@@ -198,10 +191,6 @@ fn main() {
 
         // KNIGHT
         for knight in &knights {
-            if !knight.location().is_on_map() {
-                continue
-            }
-
             if try_attack(&mut gc, &mut nav, knight) {
 
             }
@@ -237,10 +226,6 @@ fn main() {
 
         // RANGER
         for ranger in &rangers {
-            if !ranger.location().is_on_map() {
-                continue
-            }
-
             if try_attack(&mut gc, &mut nav, ranger) {
             }
 
@@ -271,10 +256,6 @@ fn main() {
 
         // Healer
         for healer in &healers {
-            if !healer.location().is_on_map() {
-                continue
-            }
-
             if try_heal(&mut gc, &mut nav, healer) {
 
             }
@@ -310,6 +291,7 @@ fn main() {
 fn get_type(gc: &GameController, unit_type: UnitType) -> Vec<Unit> {
     gc.my_units().into_iter()
         .filter(|unit| unit.unit_type() == unit_type)
+        .filter(|unit| unit.location().is_on_map())
         .collect::<Vec<_>>()
 }
 
