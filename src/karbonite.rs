@@ -1,11 +1,39 @@
 use fnv::{FnvHashMap, FnvHashSet};
+use std::collections::BTreeSet;
 
 use engine::controller::*;
+use engine::location::*;
+use engine::unit::*;
+use navigate::*;
 
 #[derive(Debug, Eq, PartialEq)]
 enum Type { Star, Prime }
+type Karbonite = FnvHashMap<MapLocation, u32>;
 
-fn hungarian(mut matrix: Vec<Vec<i16>>) -> FnvHashMap<u16, usize> {
+pub fn assign_workers(nav: &mut Navigator, workers: Vec<&Unit>, karbonite: &Karbonite) {
+    let ordered = karbonite.keys()
+        .collect::<Vec<_>>();
+    
+    let mut optimize = Vec::new();
+    for worker in &workers {
+        let mut row = Vec::new();
+        let worker_loc = worker.location().map_location().unwrap();
+        for loc in &ordered {
+            row.push(nav.moves_between(&worker_loc, &loc) as i16);
+        }
+        optimize.push(row);
+    }
+
+    if optimize.len() > 0 && optimize[0].len() > 0 {
+        for (worker, location) in hungarian(optimize) {
+            nav.navigate(workers[worker], ordered[location]);
+        }
+    }
+}
+
+
+
+fn hungarian(mut matrix: Vec<Vec<i16>>) -> FnvHashMap<usize, usize> {
     let rows = matrix.len();
     let cols = matrix[0].len();
     let target = if rows < cols { rows } else { cols };
@@ -52,7 +80,7 @@ fn hungarian(mut matrix: Vec<Vec<i16>>) -> FnvHashMap<u16, usize> {
             if col_cover.iter().filter(|&&cov| cov).count() == target {
                 return mask.into_iter()
                     .filter(|&(_, ref t)| t == &Type::Star)
-                    .map(|((row, col), _)| (row as u16, col))
+                    .map(|((row, col), _)| (row, col))
                     .collect::<FnvHashMap<_, _>>()
             }
         }

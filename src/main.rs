@@ -15,6 +15,7 @@ use Direction::*;
 use UnitType::*;
 
 use bc::navigate::*;
+use bc::karbonite::*;
 
 use fnv::FnvHashMap;
 use fnv::FnvHashSet;
@@ -173,8 +174,8 @@ fn main() {
             }
         }
 
-
         let workers = get_type(&gc, Worker);
+        let mut unassigned = Vec::new();
         for worker in &workers {
             if !worker.location().is_on_map() {
                 continue
@@ -194,20 +195,20 @@ fn main() {
             }
 
             if un_facts.len() > 0 {
-                try_move_to(&mut gc, &mut nav, worker, &loc(&un_facts[0]));
+                try_move_to(&mut nav, worker, &loc(&un_facts[0]));
             }
             else if un_rockets.len() > 0{
-                try_move_to(&mut gc, &mut nav, worker, &loc(&un_rockets[0]));
+                try_move_to(&mut nav, worker, &loc(&un_rockets[0]));
             }
             else if fin_rockets.len() > 0 && gc.planet() != Planet::Mars {
-                try_move_to(&mut gc, &mut nav, worker, &loc(&fin_rockets[0]));
+                try_move_to(&mut nav, worker, &loc(&fin_rockets[0]));
             }
             else if karb_locs.keys().len() >0 {
-                let mut locs = karb_locs.keys().collect::<Vec<_>>();
-                locs.sort_by_key(|location| nav.moves_between(&loc(worker),location));
-                try_move_to(&mut gc, &mut nav, worker, locs[0]);
+                unassigned.push(worker);
             }
         }
+        assign_workers(&mut nav, unassigned, &karb_locs);
+
         // KNIGHT
         for knight in &knights {
             if !knight.location().is_on_map() {
@@ -229,21 +230,21 @@ fn main() {
                 enemies.retain(|en| en.unit_type().is_robot() && en.unit_type() != Worker && en.unit_type() != Healer);
                 enemies.retain(|en| loc(en).distance_squared_to(loc(knight)) < en.attack_range().unwrap());
                 if friends.len() >= enemies.len() {
-                    try_move_to(&mut gc, &mut nav, knight, &loc(&nearby_units[0]));
+                    try_move_to(&mut nav, knight, &loc(&nearby_units[0]));
                 }
                 else {
                     let my_loc = loc(knight);
                     let en_loc = loc(&nearby_units[0]);
                     if start != None {
-                        try_move_to(&mut gc, &mut nav, knight, &start.unwrap());
+                        try_move_to(&mut nav, knight, &start.unwrap());
                     }
                 }
             }
             if fin_rockets.len() != 0 {
-                try_move_to(&mut gc, &mut nav, knight, &loc(&fin_rockets[0]));
+                try_move_to(&mut nav, knight, &loc(&fin_rockets[0]));
             }
             else if rally != None {
-                try_move_to(&mut gc, &mut nav, knight, &rally.unwrap());
+                try_move_to(&mut nav, knight, &rally.unwrap());
             }
         }
 
@@ -267,14 +268,14 @@ fn main() {
                     let my_loc = loc(ranger);
                     let en_loc = loc(&nearby_units[0]);
                     if start != None {
-                        try_move_to(&mut gc, &mut nav, ranger, &start.unwrap());
+                        try_move_to(&mut nav, ranger, &start.unwrap());
                     }
                 }
             }
             else if fin_rockets.len() != 0 {
-                try_move_to(&mut gc, &mut nav, ranger, &loc(&fin_rockets[0]));
+                try_move_to(&mut nav, ranger, &loc(&fin_rockets[0]));
             }
-            else if rally != None && try_move_to(&mut gc, &mut nav, ranger, &rally.unwrap()) {
+            else if rally != None && try_move_to(&mut nav, ranger, &rally.unwrap()) {
 
             }
         }
@@ -297,10 +298,10 @@ fn main() {
             }
 
             else if fin_rockets.len() != 0 {
-                try_move_to(&mut gc, &mut nav, healer, &loc(&fin_rockets[0]));
+                try_move_to(&mut nav, healer, &loc(&fin_rockets[0]));
             }
             else if rally != None {
-                try_move_to(&mut gc, &mut nav, healer, &rally.unwrap());
+                try_move_to(&mut nav, healer, &rally.unwrap());
             }
         }
 
@@ -367,7 +368,7 @@ fn try_build(gc: &mut GameController, unit: &Unit) -> bool {
     return false
 }
 
-fn try_move_to(gc: &mut GameController, nav: &mut Navigator, unit: &Unit, loc: &MapLocation) -> bool {
+fn try_move_to(nav: &mut Navigator, unit: &Unit, loc: &MapLocation) -> bool {
     nav.navigate(unit, loc);
     return true
 }
