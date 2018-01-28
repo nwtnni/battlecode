@@ -12,7 +12,7 @@ const AROUND: [Point; 8] = [
 ];
 
 const SEARCH_DEPTH: Time = 8;
-const EXPIRE_TIME: Time = 6;
+const EXPIRE_TIME: Time = 4;
 const MAX_HEAT: Heat = 10;
 
 type Distance = i8;
@@ -55,6 +55,10 @@ pub struct Navigator {
     routes: FnvHashMap<ID, Vec<TimePoint>>,
     unmoved: FnvHashSet<Point>,
     targets: FnvHashMap<u16, Point>,
+
+    // Execution order
+    moves: FnvHashMap<u16, Option<Direction>>,
+    order: Vec<u16>,
 }
 
 impl Navigator {
@@ -72,6 +76,8 @@ impl Navigator {
         let reserved = FnvHashSet::default();
         let targets = FnvHashMap::default();
         let unmoved = FnvHashSet::default();
+        let moves = FnvHashMap::default();
+        let order = Vec::new();
 
         for y in 0..h {
             for x in 0..w {
@@ -86,7 +92,7 @@ impl Navigator {
             }
         }
         Navigator { w, h, t, terrain, cache, enemies,
-            expiration, reserved, routes, targets, unmoved
+            expiration, reserved, routes, targets, unmoved, order, moves,
         }
     }
 
@@ -103,6 +109,8 @@ impl Navigator {
         for (id, expiration) in self.expiration.iter_mut() {
             *expiration -= 1;
             if *expiration == 0 {
+                // println!("Route for unit {} expired; clearing cache.", id);
+                self.order.retain(|&other| other != *id);
                 self.targets.remove(id).unwrap();
                 for (x, y, t, _) in self.routes.remove(id).unwrap() {
                     self.reserved.remove(&(x, y, t));
@@ -110,7 +118,7 @@ impl Navigator {
             }
         }
         self.expiration.retain(|_, &mut expiration| expiration != 0);
-
+        self.moves.clear();
         self.unmoved.clear();
         for unit in gc.my_units() {
             if !self.targets.contains_key(&unit.id()) {
@@ -129,34 +137,37 @@ impl Navigator {
         self.cache[&(ex, ey)][self.index(sx, sy)] as i32
     }
 
-    pub fn navigate(&mut self, unit: &Unit, end: &MapLocation) -> Option<Direction> {
+    pub fn navigate(&mut self, unit: &Unit, end: &MapLocation) {
         let id = unit.id();
         let start = unit.location().map_location().unwrap();
         let heat = unit.movement_heat().unwrap() as Heat;
         let (sx, sy) = (start.x as Distance, start.y as Distance);
         let (ex, ey) = (end.x as Distance, end.y as Distance);
 
-        if sx != ex || sx != ey {
-            if let Some(&(x, y)) = self.targets.get(&id) {
-                if x == ex && y == ey {
-                    let route = self.routes.get(&id).unwrap();
-                    println!("Found cached route from ({}, {}) to ({}, {}) on turn {} for unit {} with heat {}: {:?}",
-                        sx, sy, ex, ey, self.t, id, unit.movement_heat().unwrap(), route);
-                    let current = route.iter()
-                        .position(|&(x, y, t, h)| sx == x && sy == y && t == self.t && h == heat)
-                        .unwrap();
-                    let (x, y, _, _) = route[current - 1];
-                    return Self::to_direction(x - sx, y - sy)
-                } else {
-                    self.expiration.remove(&id).unwrap();
-                    self.targets.remove(&id).unwrap();
-                    for (x, y, t, _) in self.routes.remove(&id).unwrap() {
-                        self.reserved.remove(&(x, y, t));
-                    }
+        // println!("Starting navigation for unit {} from ({}, {}) to ({}, {})", id, sx, sy, ex, ey);
+        if let Some(&(x, y)) = self.targets.get(&id) {
+            if x == ex && y == ey {
+                let route = self.routes.get(&id).unwrap();
+                // println!("Found cached route from ({}, {}) to ({}, {}) on turn {} for unit {} with heat {}: {:?}",
+                    // sx, sy, ex, ey, self.t, id, unit.movement_heat().unwrap(), route);
+                let current = route.iter()
+                    .position(|&(x, y, t, h)| sx == x && sy == y && t == self.t && h == heat)
+                    .unwrap();
+                let (x, y, _, _) = route[current - 1];
+                self.moves.insert(id, Self::to_direction(x - sx, y - sy));
+                return
+            } else {
+                // println!("Navigating to route other than cache. Deleting old route.");
+                self.order.retain(|&other| other != id);
+                self.expiration.remove(&id).unwrap();
+                self.targets.remove(&id).unwrap();
+                for (x, y, t, _) in self.routes.remove(&id).unwrap() {
+                    self.reserved.remove(&(x, y, t));
                 }
             }
         }
 
+        // println!("No cached route found.");
         if !self.cache.contains_key(&(ex, ey)) {
             self.cache_bfs(end);
         }
@@ -203,10 +214,12 @@ impl Navigator {
         self.cache.insert((ex, ey), distances);
     }
 
-    fn a_star(&mut self, unit: &Unit, start: &MapLocation, end: &MapLocation) -> Option<Direction> {
+    fn a_star(&mut self, unit: &Unit, start: &MapLocation, end: &MapLocation) {
+        // println!("Generating route");
         let (sx, sy) = (start.x as Distance, start.y as Distance);
         let (ex, ey) = (end.x as Distance, end.y as Distance);
         let start_index = self.index(sx, sy);
+        self.unmoved.remove(&(sx, sy));
 
         let heuristic = &self.cache[&(ex, ey)];
         let max_depth = SEARCH_DEPTH + self.t;
@@ -241,13 +254,14 @@ impl Navigator {
                 }
 
                 route.push((sx, sy, self.t, heat));
-                println!("Generated route from ({}, {}) to ({}, {}) on turn {} for unit {} with heat {} and cooldown {}: {:?}", sx, sy, ex, ey, self.t, id, unit.movement_heat().unwrap(), cd, route);
+                // println!("Generated route from ({}, {}) to ({}, {}) on turn {} for unit {} with heat {} and cooldown {}: {:?}", sx, sy, ex, ey, self.t, id, unit.movement_heat().unwrap(), cd, route);
                 self.expiration.insert(id, EXPIRE_TIME);
-                self.unmoved.remove(&(sx, sy));
                 self.reserved.insert((sx, sy, self.t));
                 self.routes.insert(id, route);
                 self.targets.insert(id, (ex, ey));
-                return Self::to_direction(current.0 - sx, current.1 - sy)
+                self.order.push(id);
+                self.moves.insert(id, Self::to_direction(current.0 - sx, current.1 - sy));
+                return
             }
 
             // Staying still is always an option
@@ -256,7 +270,6 @@ impl Navigator {
             if !self.reserved.contains(&(node.x, node.y, node.t + 1))
             && !self.enemies.contains(&(node.x, node.y))
             && !self.unmoved.contains(&(node.x, node.y)) {
-
                 path.insert((node.x, node.y, node.t + 1, next_heat),
                             (node.x, node.y, node.t, node.h));
                 heap.push(ANode {
@@ -287,7 +300,15 @@ impl Navigator {
                 }
             }
         }
-        None
+        unreachable!()
+    }
+
+    pub fn execute(&self, gc: &mut GameController) {
+        for id in &self.order {
+            if let Some(direction) = self.moves[id] {
+                gc.move_robot(*id, direction).unwrap();
+            }
+        }
     }
 }
 

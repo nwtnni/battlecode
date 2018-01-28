@@ -94,40 +94,40 @@ fn main() {
         let healers = get_type(&gc, Healer);
 
         // FACTORY
-        // for fact in &fin_facts {
-        //     if workers.len() == 0 {
-        //         try_produce(&mut gc,fact,Worker);
-        //     }
-        //     else if !(gc.research_info().unwrap().get_level(&Rocket) > 0 && un_rockets.len() + fin_rockets.len() ==0) {
-        //         try_produce(&mut gc, fact, production_queue[prod_num%production_queue.len()]);
-        //         prod_num = (prod_num+1)%production_queue.len();
-        //     }
-        //     try_unload(&mut gc,fact)
-        // }
+        for fact in &fin_facts {
+            if workers.len() == 0 {
+                try_produce(&mut gc,fact,Worker);
+            }
+            else if !(gc.research_info().unwrap().get_level(&Rocket) > 0 && un_rockets.len() + fin_rockets.len() ==0) {
+                try_produce(&mut gc, fact, production_queue[prod_num%production_queue.len()]);
+                prod_num = (prod_num+1)%production_queue.len();
+            }
+            try_unload(&mut gc,fact)
+        }
 
         // ROCKET
-        // for rocket in &fin_rockets {
-        //     if !rocket.rocket_is_used().unwrap() {
-        //         let num_loaded = try_load(&mut gc, rocket);
-        //         if rocket.structure_garrison().unwrap().len() + num_loaded >= 8 {
-        //             let xRange = Range::new(0, gc.starting_map(Planet::Mars).width);
-        //             let yRange = Range::new(0, gc.starting_map(Planet::Mars).height);
-        //             let mut rng = rand::thread_rng();
-        //             let x = xRange.ind_sample(&mut rng);
-        //             let y = yRange.ind_sample(&mut rng);
+        for rocket in &fin_rockets {
+            if !rocket.rocket_is_used().unwrap() {
+                let num_loaded = try_load(&mut gc, rocket);
+                if rocket.structure_garrison().unwrap().len() + num_loaded >= 8 {
+                    let xRange = Range::new(0, gc.starting_map(Planet::Mars).width);
+                    let yRange = Range::new(0, gc.starting_map(Planet::Mars).height);
+                    let mut rng = rand::thread_rng();
+                    let x = xRange.ind_sample(&mut rng);
+                    let y = yRange.ind_sample(&mut rng);
 
-        //             let loc = MapLocation::new(Planet::Mars,x as i32,y as i32);
-        //             if gc.can_launch_rocket(rocket.id(),loc) {
-        //                 gc.launch_rocket(rocket.id(),loc);
-        //             }
-        //         }
-        //     }
-        //     else {
-        //         if rocket.structure_garrison().unwrap().len() > 0 {
-        //             try_unload(&mut gc, rocket);
-        //         }
-        //     }
-        // }
+                    let loc = MapLocation::new(Planet::Mars,x as i32,y as i32);
+                    if gc.can_launch_rocket(rocket.id(),loc) {
+                        gc.launch_rocket(rocket.id(),loc);
+                    }
+                }
+            }
+            else {
+                if rocket.structure_garrison().unwrap().len() > 0 {
+                    try_unload(&mut gc, rocket);
+                }
+            }
+        }
 
         let workers = get_type(&gc, Worker);
         // WORKER
@@ -149,16 +149,16 @@ fn main() {
             }
 
 
-            // if try_build(&mut gc, worker) {
+            if try_build(&mut gc, worker) {
 
-            // }
-            // else if fin_facts.len() + un_facts.len() < 4 && try_blueprint(&mut gc,worker,Factory) {
+            }
+            else if fin_facts.len() + un_facts.len() < 4 && try_blueprint(&mut gc,worker,Factory) {
 
-            // }
-            // else if gc.research_info().unwrap().get_level(&Rocket)>0 && try_blueprint(&mut gc,worker,Rocket){
+            }
+            else if gc.research_info().unwrap().get_level(&Rocket)>0 && try_blueprint(&mut gc,worker,Rocket){
 
-            // }
-            if try_harvest(&mut gc, worker) {
+            }
+            else if try_harvest(&mut gc, worker) {
 
             }
 
@@ -268,7 +268,7 @@ fn main() {
 
             }
         }
-
+        nav.execute(&mut gc);
         gc.next_turn();
     }
 }
@@ -322,15 +322,8 @@ fn try_build(gc: &mut GameController, unit: &Unit) -> bool {
 }
 
 fn try_move_to(gc: &mut GameController, nav: &mut Navigator, unit: &Unit, loc: &MapLocation) -> bool {
-    let origin = MapLocation::new(gc.planet(), 0, 0);
-    if let Some(dir) = nav.navigate(&unit, &origin) {
-        if gc.is_move_ready(unit.id()) && gc.can_move(unit.id(),dir) {
-            gc.move_robot(unit.id(), dir);
-            println!("Successfully moved robot {}", unit.id());
-        }
-        return true
-    }
-    return false
+    nav.navigate(&unit, loc);
+    return true
 }
 
 // FACTORY METHODS
