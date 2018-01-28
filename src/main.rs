@@ -166,7 +166,10 @@ fn main() {
 
         // WORKER
         for worker in &workers {
-            if fin_facts.len() + un_facts.len() != 0 && !(gc.research_info().unwrap().get_level(&Rocket) > 0 && un_rockets.len() + fin_rockets.len() ==0) && workers.len() <10 {
+            if (fin_facts.len() + un_facts.len() != 0
+            && !(gc.research_info().unwrap().get_level(&Rocket) > 0
+            && un_rockets.len() + fin_rockets.len() ==0)
+            && workers.len() <10) || gc.round() > 750 {
                 try_replicate(&mut gc, &worker);
             }
         }
@@ -265,6 +268,11 @@ fn main() {
         }
 
         nav.execute(&mut gc);
+
+        for knight in &knights { try_attack(&mut gc, &mut nav, knight) || try_javelin(&mut gc, &mut nav, knight); }
+        for ranger in &rangers { try_attack(&mut gc, &mut nav, ranger); }
+        for healer in &healers { try_heal(&mut gc, &mut nav, healer); }
+
         gc.next_turn();
     }
 }
