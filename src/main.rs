@@ -241,6 +241,9 @@ fn main() {
                         try_move_to(&mut nav, ranger, &start.unwrap());
                     }
                 }
+                else {
+                    try_move_to(&mut nav, ranger, &ranger_loc);
+                }
             }
             else if fin_rockets.len() != 0 {
                 try_move_to(&mut nav, ranger, &loc(&fin_rockets[0]));
@@ -262,7 +265,7 @@ fn main() {
                 overcharged_units.push(overcharged);
             }
 
-            let mut nearby_units = gc.sense_nearby_units_by_team(healer_loc, 64, gc.team().other());
+            let mut nearby_units = gc.sense_nearby_units_by_team(healer_loc, 50, gc.team().other());
             nearby_units.sort_by_key(|en| nav.moves_between(&healer_loc, &loc(en)));
             if nearby_units.len() != 0 {
                 let friends = gc.sense_nearby_units_by_team(healer_loc, 25, gc.team());
@@ -275,6 +278,9 @@ fn main() {
                     if start != None {
                         try_move_to(&mut nav, healer, &start.unwrap());
                     }
+                }
+                else {
+                    try_move_to(&mut nav, healer, &healer_loc);
                 }
             }
             else if fin_rockets.len() != 0 {
@@ -435,7 +441,7 @@ fn try_overcharge(gc: &mut GameController, nav: &mut Navigator, healer: &Unit) -
             if !friend.unit_type().is_robot() || friend.unit_type() == Worker {
                 continue
             }
-            if friend.ability_heat().unwrap() >=10 && gc.can_overcharge(healer.id(),friend.id()) {
+            if (friend.ability_heat().unwrap() >=10 || (friend.attack_heat().unwrap() >= 10 && friend.unit_type() == Ranger)) && gc.can_overcharge(healer.id(),friend.id()) {
                 gc.overcharge(healer.id(),friend.id());
                 return Some(friend.id())
             }
