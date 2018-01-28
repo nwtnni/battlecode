@@ -102,7 +102,7 @@ impl Navigator {
         self.t += 1;
         self.enemies = gc.sense_nearby_units_by_team(origin, 2500, enemy)
             .into_iter()
-            .map(|enemy| enemy.location().map_location().unwrap())
+            .filter_map(|enemy| enemy.location().map_location().ok())
             .map(|enemy| (enemy.x as Distance, enemy.y as Distance))
             .collect::<FnvHashSet<_>>();
 
@@ -122,10 +122,12 @@ impl Navigator {
         self.unmoved.clear();
         for unit in gc.my_units() {
             if !self.targets.contains_key(&unit.id()) {
-                let loc = unit.location().map_location().unwrap();
-                self.unmoved.insert((loc.x as Distance, loc.y as Distance));
+                if let Ok(p) = unit.location().map_location() {
+                    self.unmoved.insert((p.x as Distance, p.y as Distance));
+                }
             }
         }
+        // println!("Order: {:?}", self.order);
     }
 
     pub fn moves_between(&mut self, start: &MapLocation, end: &MapLocation) -> i32 {
@@ -149,7 +151,7 @@ impl Navigator {
             if x == ex && y == ey {
                 let route = self.routes.get(&id).unwrap();
                 // println!("Found cached route from ({}, {}) to ({}, {}) on turn {} for unit {} with heat {}: {:?}",
-                    // sx, sy, ex, ey, self.t, id, unit.movement_heat().unwrap(), route);
+                //     sx, sy, ex, ey, self.t, id, unit.movement_heat().unwrap(), route);
                 let current = route.iter()
                     .position(|&(x, y, t, h)| sx == x && sy == y && t == self.t && h == heat)
                     .unwrap();
@@ -267,9 +269,7 @@ impl Navigator {
             // Staying still is always an option
             let next_cost = if node.x == ex && node.y == ey { node.a } else { node.a + 1 };
             let next_heat = if node.h < MAX_HEAT { 0 } else { node.h - MAX_HEAT };
-            if !self.reserved.contains(&(node.x, node.y, node.t + 1))
-            && !self.enemies.contains(&(node.x, node.y))
-            && !self.unmoved.contains(&(node.x, node.y)) {
+            if !self.reserved.contains(&(node.x, node.y, node.t + 1)) {
                 path.insert((node.x, node.y, node.t + 1, next_heat),
                             (node.x, node.y, node.t, node.h));
                 heap.push(ANode {
@@ -300,14 +300,26 @@ impl Navigator {
                 }
             }
         }
-        unreachable!()
+        self.unmoved.insert((sx, sy));
+        return
     }
 
-    pub fn execute(&self, gc: &mut GameController) {
+    pub fn execute(&mut self, gc: &mut GameController) {
+        let mut failed = FnvHashSet::default();
         for id in &self.order {
-            if let Some(direction) = self.moves[id] {
-                gc.move_robot(*id, direction).unwrap();
+            if let Some(&Some(direction)) = self.moves.get(&id) {
+                if gc.move_robot(*id, direction).is_err() {
+                    failed.insert(*id);
+                    self.expiration.remove(&id).unwrap();
+                    self.targets.remove(&id).unwrap();
+                    for (x, y, t, _) in self.routes.remove(&id).unwrap() {
+                        self.reserved.remove(&(x, y, t));
+                    }
+                }
             }
+        }
+        for id in failed {
+            self.order.retain(|&other| other != id);
         }
     }
 }
