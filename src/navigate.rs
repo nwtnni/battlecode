@@ -189,6 +189,12 @@ impl Navigator {
         }
     }
 
+    fn sqdist((x1, y1): Point, (x2, y2): Point) -> i16 {
+        let dx = (x2 as i16) - (x1 as i16);
+        let dy = (y2 as i16) - (y1 as i16);
+        dx*dx + dy*dy
+    }
+
     fn cache_bfs(&mut self, end: &MapLocation) {
         let (ex, ey) = (end.x as Distance, end.y as Distance);
         let mut distances = vec![i8::max_value(); (self.w as usize * self.h as usize)];
@@ -262,7 +268,7 @@ impl Navigator {
             }
 
             // Staying still is always an option
-            let next_cost = if node.x == ex && node.y == ey { node.a } else { node.a + 1 };
+            let next_cost = if Self::sqdist((node.x, node.y), (ex, ey)) <= 2 { node.a } else { node.a + 1 };
             let next_heat = if node.h < MAX_HEAT { 0 } else { node.h - MAX_HEAT };
             if !self.reserved.contains(&(node.x, node.y, node.t + 1)) {
                 path.insert((node.x, node.y, node.t + 1, next_heat),
