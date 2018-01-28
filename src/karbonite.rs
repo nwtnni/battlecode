@@ -6,32 +6,71 @@ use engine::location::*;
 use engine::unit::*;
 use navigate::*;
 
+const WORKERS_PER_FACTORY: usize = 4;
+const WORKERS_PER_ROCKET: usize = 4;
+const WORKERS_PER_FROCKET: usize = 4;
+
 #[derive(Debug, Eq, PartialEq)]
 enum Type { Star, Prime }
 type Karbonite = FnvHashMap<MapLocation, u32>;
 
-pub fn assign_workers(nav: &mut Navigator, workers: Vec<&Unit>, karbonite: &Karbonite) {
-    let ordered = karbonite.keys()
-        .collect::<Vec<_>>();
-    
+fn loc(unit: &Unit) -> MapLocation {
+    unit.location().map_location().unwrap()
+}
+
+pub fn assign_workers(nav: &mut Navigator, workers: Vec<Unit>, karbonite: &Karbonite,
+    un_facts: &Vec<Unit>, un_rockets: &Vec<Unit>, fin_rockets: &Vec<Unit>) {
+
+    if workers.len() <= 0 { return }
+    let karbonite = karbonite.keys().collect::<Vec<_>>();
+    let un_facts = un_facts.iter().map(|fact| loc(fact)).collect::<Vec<_>>();
+    let un_rockets = un_rockets.iter().map(|rocket| loc(rocket)).collect::<Vec<_>>();
+    let fin_rockets = fin_rockets.iter().map(|rocket| loc(rocket)).collect::<Vec<_>>();
+
     let mut optimize = Vec::new();
     for worker in &workers {
         let mut row = Vec::new();
-        let worker_loc = worker.location().map_location().unwrap();
-        for loc in &ordered {
-            row.push(nav.moves_between(&worker_loc, &loc) as i16);
+        let worker_loc = loc(worker);
+        for location in &karbonite {
+            let priority = 100 + nav.moves_between(&worker_loc, &location) as i16;
+            row.push(priority);
         }
+        for location in &un_facts {
+            let priority = nav.moves_between(&worker_loc, &location) as i16;
+            for _ in 0..WORKERS_PER_FACTORY { row.push(priority) }
+        }
+        for location in &un_rockets {
+            let priority = nav.moves_between(&worker_loc, &location) as i16;
+            for _ in 0..WORKERS_PER_ROCKET { row.push(priority) }
+        }
+        if loc(&workers[0]).planet == Planet::Earth {
+            for location in &fin_rockets {
+                let priority = nav.moves_between(&worker_loc, &location) as i16;
+                for _ in 0..WORKERS_PER_FROCKET { row.push(priority) }
+            }
+        }
+
         optimize.push(row);
     }
 
+    let k = karbonite.len();
+    let f = k + (un_facts.len() * WORKERS_PER_FACTORY);
+    let r = f + (un_rockets.len() * WORKERS_PER_ROCKET);
+
     if optimize.len() > 0 && optimize[0].len() > 0 {
         for (worker, location) in hungarian(optimize) {
-            nav.navigate(workers[worker], ordered[location]);
+            if location < k {
+                nav.navigate(&workers[worker], &karbonite[location]);
+            } else if location < f {
+                nav.navigate(&workers[worker], &un_facts[(location - k) / WORKERS_PER_FACTORY]);
+            } else if location < r {
+                nav.navigate(&workers[worker], &un_rockets[(location - f) / WORKERS_PER_ROCKET]);
+            } else {
+                nav.navigate(&workers[worker], &fin_rockets[(location - r) / WORKERS_PER_FROCKET]);
+            }
         }
     }
 }
-
-
 
 fn hungarian(mut matrix: Vec<Vec<i16>>) -> FnvHashMap<usize, usize> {
     let rows = matrix.len();

@@ -162,24 +162,24 @@ fn main() {
             }
         }
 
-        let workers = get_type(&gc, Worker);
+        let workers = get_type(&gc, Worker)
+            .into_iter()
+            .filter(|worker| worker.location().is_on_map())
+            .collect::<Vec<_>>();
+
         // WORKER
         for worker in &workers {
-            if !worker.location().is_on_map() {
-                continue
-            }
-
             if fin_facts.len() + un_facts.len() != 0 && !(gc.research_info().unwrap().get_level(&Rocket) > 0 && un_rockets.len() + fin_rockets.len() ==0) && workers.len() <10 {
                 try_replicate(&mut gc, &worker);
             }
         }
 
-        let workers = get_type(&gc, Worker);
-        let mut unassigned = Vec::new();
+        let workers = get_type(&gc, Worker)
+            .into_iter()
+            .filter(|worker| worker.location().is_on_map())
+            .collect::<Vec<_>>();
+
         for worker in &workers {
-            if !worker.location().is_on_map() {
-                continue
-            }
 
             if try_build(&mut gc, worker) {
 
@@ -193,21 +193,8 @@ fn main() {
             else if try_harvest(&mut gc, worker) {
 
             }
-
-            if un_facts.len() > 0 {
-                try_move_to(&mut nav, worker, &loc(&un_facts[0]));
-            }
-            else if un_rockets.len() > 0{
-                try_move_to(&mut nav, worker, &loc(&un_rockets[0]));
-            }
-            else if fin_rockets.len() > 0 && gc.planet() != Planet::Mars {
-                try_move_to(&mut nav, worker, &loc(&fin_rockets[0]));
-            }
-            else if karb_locs.keys().len() >0 {
-                unassigned.push(worker);
-            }
         }
-        assign_workers(&mut nav, unassigned, &karb_locs);
+        assign_workers(&mut nav, workers, &karb_locs, &un_facts, &un_rockets, &fin_rockets);
 
         // KNIGHT
         for knight in &knights {
