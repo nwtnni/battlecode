@@ -4,6 +4,6 @@ version = "0.1.0"
 authors = ["Newton Ni <nwtnni@gmail.com>"]
 
 [dependencies]
-battlecode-engine = { git = "https://github.com/battlecode/battlecode-2018" }
+battlecode-engine = { path = "../battlecode-engine" }
 fnv = "1.0.6"
 rand = "0.4"
