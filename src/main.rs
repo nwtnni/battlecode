@@ -175,8 +175,8 @@ fn main() {
 
         for worker in &workers {
             try_build(&mut gc, worker)
-            || (fin_facts.len() + un_facts.len() < 5 && try_blueprint(&mut gc,worker,Factory))
-            || (gc.research_info().unwrap().get_level(&Rocket)>0 && try_blueprint(&mut gc,worker,Rocket))
+            || (fin_facts.len() + un_facts.len() < 5 && try_blueprint(&mut gc, &nav, worker,Factory))
+            || (gc.research_info().unwrap().get_level(&Rocket)>0 && try_blueprint(&mut gc, &nav, worker,Rocket))
             || try_harvest(&mut gc, worker);
         }
         assign_workers(&mut nav, workers, &karb_locs, &un_facts, &un_rockets, &fin_rockets);
@@ -299,9 +299,11 @@ fn try_replicate(gc: &mut GameController, unit: &Unit) -> bool {
     return false
 }
 
-fn try_blueprint(gc: &mut GameController, unit: &Unit, building_type: UnitType) -> bool{
+fn try_blueprint(gc: &mut GameController, nav: &Navigator, unit: &Unit, building_type: UnitType) -> bool {
+    let location = loc(unit);
     for d in Direction::all() {
-        if gc.can_blueprint(unit.id(),building_type,d) {
+        if gc.can_blueprint(unit.id(),building_type,d)
+        && nav.neighbors(&location.add(d)) > 4 {
             gc.blueprint(unit.id(),building_type,d);
             return true
         }

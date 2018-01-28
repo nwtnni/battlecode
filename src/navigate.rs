@@ -137,6 +137,11 @@ impl Navigator {
         self.cache[&(ex, ey)][self.index(sx, sy)] as i32
     }
 
+    pub fn neighbors(&self, start: &MapLocation) -> usize {
+        let (sx, sy) = (start.x as Distance, start.y as Distance);
+        self.terrain[self.index(sx, sy)].len()
+    }
+
     pub fn navigate(&mut self, unit: &Unit, end: &MapLocation) {
         let id = unit.id();
         let start = unit.location().map_location().unwrap();
