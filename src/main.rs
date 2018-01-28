@@ -105,10 +105,28 @@ fn main() {
 
         seen_locs.iter_mut().for_each(|(_, time)| *time += 1);
 
-        if rally != None && gc.has_unit_at_location(rally.unwrap()) && gc.sense_unit_at_location(rally.unwrap()).unwrap().team() == gc.team() && gc.sense_unit_at_location(rally.unwrap()).unwrap().unit_type() != Worker {
-            loc_num = (loc_num +1)%starting_en_units.len();
-            if loc_num < starting_en_units.len() {
-                rally = starting_en_units.get(loc_num).map(|unit| loc(unit));
+        if gc.planet() == Planet::Earth {
+            if rally != None && gc.has_unit_at_location(rally.unwrap()) && gc.sense_unit_at_location(rally.unwrap()).unwrap().team() == gc.team() && gc.sense_unit_at_location(rally.unwrap()).unwrap().unit_type() != Worker {
+
+                loc_num = (loc_num +1)%starting_en_units.len();
+                if loc_num < starting_en_units.len() {
+                    rally = starting_en_units.get(loc_num).map(|unit| loc(unit));
+                }
+            }
+        }
+        else {
+            if rally == None || gc.has_unit_at_location(rally.unwrap()) && gc.sense_unit_at_location(rally.unwrap()).unwrap().team() == gc.team() && gc.sense_unit_at_location(rally.unwrap()).unwrap().unit_type() != Worker{
+                let x_range = Range::new(0, gc.starting_map(Planet::Mars).width);
+                let y_range = Range::new(0, gc.starting_map(Planet::Mars).height);
+                let mut rng = rand::thread_rng();
+                let x = x_range.ind_sample(&mut rng);
+                let y = y_range.ind_sample(&mut rng);
+
+                let loc = MapLocation::new(Planet::Mars,x as i32,y as i32);
+                if starting_map.is_passable_terrain_at(loc).unwrap() {
+                    rally = Some(loc);
+                    println!("Changed to {:?}",loc);
+                }
             }
         }
 
@@ -153,8 +171,9 @@ fn main() {
                 let num_loaded = try_load(&mut gc, rocket);
                 let period = gc.orbit_pattern().period;
                 let amplitude = gc.orbit_pattern().amplitude;
-                let velocity = amplitude as f64 * (gc.round() as f64 *2.0 as f64 *PI/period as f64).cos();
-                if rocket.structure_garrison().unwrap().len() + num_loaded >= 8 && velocity > 1.0 || rocket.health() != rocket.max_health(){
+                let velocity = amplitude as f64 *2.0 as f64 *PI/period as f64 * (gc.round() as f64 *2.0 as f64 *PI/period as f64).cos();
+                println!("Round: {}, Period: {}, Amplitude: {}, Velocity: {:?}",gc.round(),period, amplitude, velocity);
+                if (rocket.structure_garrison().unwrap().len() + num_loaded >= 8 && velocity < 1.0) || (rocket.health() != rocket.max_health() && rocket.structure_garrison().unwrap().len() + num_loaded > 0){
                     let x_range = Range::new(0, gc.starting_map(Planet::Mars).width);
                     let y_range = Range::new(0, gc.starting_map(Planet::Mars).height);
                     let mut rng = rand::thread_rng();
@@ -164,6 +183,7 @@ fn main() {
                     let loc = MapLocation::new(Planet::Mars,x as i32,y as i32);
                     if gc.can_launch_rocket(rocket.id(),loc) {
                         gc.launch_rocket(rocket.id(),loc);
+                        println!("LAUNCH");
                     }
                 }
             }
@@ -221,7 +241,7 @@ fn main() {
                         try_move_to(&mut nav, knight, &start.unwrap());
                     }
                 }
-            } else if fin_rockets.len() != 0 {
+            } else if gc.planet() != Planet::Mars && fin_rockets.len() != 0 {
                 try_move_to(&mut nav, knight, &loc(&fin_rockets[0]));
             } else if rally != None {
                 try_move_to(&mut nav, knight, &rally.unwrap());
@@ -252,7 +272,7 @@ fn main() {
                     try_move_to(&mut nav, ranger, &ranger_loc);
                 }
             }
-            else if fin_rockets.len() != 0 {
+            else if gc.planet() != Planet::Mars && fin_rockets.len() != 0 {
                 try_move_to(&mut nav, ranger, &loc(&fin_rockets[0]));
             }
             else if rally != None && try_move_to(&mut nav, ranger, &rally.unwrap()) {
@@ -290,7 +310,7 @@ fn main() {
                     try_move_to(&mut nav, healer, &healer_loc);
                 }
             }
-            else if fin_rockets.len() != 0 {
+            else if gc.planet() != Planet::Mars && fin_rockets.len() != 0 {
                 try_move_to(&mut nav, healer, &loc(&fin_rockets[0]));
             }
             else if rally != None {
@@ -403,7 +423,7 @@ fn try_unload(gc: &mut GameController, building: &Unit) {
 fn try_load(gc: &mut GameController, rocket: &Unit) -> usize {
     let mut num_loaded = 0;
     for unit in gc.sense_nearby_units_by_team(loc(rocket), 2, gc.team()) {
-        if rocket.structure_garrison().unwrap().len() < 8 && gc.can_load(rocket.id(),unit.id()) {
+        if gc.can_load(rocket.id(),unit.id()) {
             gc.load(rocket.id(),unit.id());
             num_loaded += 1;
         }
