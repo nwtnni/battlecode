@@ -11,8 +11,8 @@ const AROUND: [Point; 8] = [
     (-1, -1), (0, -1), (1, -1),
 ];
 
-const SEARCH_DEPTH: Time = 16;
-const EXPIRE_TIME: Time = 8;
+const SEARCH_DEPTH: Time = 8;
+const EXPIRE_TIME: Time = 6;
 const MAX_HEAT: Heat = 10;
 
 type Distance = i8;
@@ -63,7 +63,7 @@ impl Navigator {
         let h = map.height as Distance;
         let t = 0;
 
-        let mut terrain = vec![Vec::new(); (w*h) as usize];
+        let mut terrain = vec![Vec::new(); w as usize * h as usize];
         let enemies = FnvHashSet::default();
         let cache = FnvHashMap::default();
         let expiration = FnvHashMap::default();
@@ -73,13 +73,12 @@ impl Navigator {
 
         for y in 0..h {
             for x in 0..w {
-                let mut adj = &mut terrain[(y*w + x) as usize];
+                let mut adj = &mut terrain[(y as usize * w as usize) + x as usize];
                 for &(dx, dy) in &AROUND {
-                    let (i, j) = (y + dy, x + dx);
-                    if i < 0 || i >= h || j < 0 || j >= w || (dx == 0 && dy == 0) {
-                        continue
-                    } else if map.is_passable_terrain[i as usize][j as usize] {
-                        adj.push((j, i));
+                    let (nx, ny) = (x + dx, y + dy);
+                    if nx >= 0 && nx < w && ny >= 0 && ny < h
+                    && map.is_passable_terrain[ny as usize][nx as usize] {
+                        adj.push((nx, ny));
                     }
                 }
             }
@@ -150,7 +149,7 @@ impl Navigator {
         self.a_star(unit, &start, end)
     }
 
-    fn index(&self, x: Distance, y: Distance) -> usize { (y*self.w + x) as usize }
+    fn index(&self, x: Distance, y: Distance) -> usize { (y as usize * self.w as usize) + x as usize }
 
     fn to_direction(dx: Distance, dy: Distance) -> Option<Direction> {
         match (dx, dy) {
@@ -168,7 +167,7 @@ impl Navigator {
 
     fn cache_bfs(&mut self, end: &MapLocation) {
         let (ex, ey) = (end.x as Distance, end.y as Distance);
-        let mut distances = vec![i8::max_value(); (self.w*self.h) as usize];
+        let mut distances = vec![i8::max_value(); (self.w as usize * self.h as usize)];
         let mut heap = BinaryHeap::default();
         distances[self.index(ex, ey)] = 0;
         heap.push(Node { d: 0, x: ex, y: ey });
@@ -176,6 +175,7 @@ impl Navigator {
         while let Some(node) = heap.pop() {
             let node_index = self.index(node.x, node.y);
             let d = distances[node_index];
+            if d < node.d { continue }
 
             for &(x, y) in &self.terrain[node_index] {
                 let next_index = self.index(x, y);
@@ -190,6 +190,7 @@ impl Navigator {
     }
 
     fn a_star(&mut self, unit: &Unit, start: &MapLocation, end: &MapLocation) -> Option<Direction> {
+        println!("Starting a-star");
         if start == end { return None }
         let (sx, sy) = (start.x as Distance, start.y as Distance);
         let (ex, ey) = (end.x as Distance, end.y as Distance);
@@ -201,11 +202,9 @@ impl Navigator {
         let id = unit.id();
         let cd = unit.movement_cooldown().unwrap() as Heat;
 
-        let mut distances = vec![i8::max_value(); (self.w*self.h) as usize];
         let mut heap = BinaryHeap::default();
         let mut path = FnvHashMap::default();
 
-        distances[self.index(sx, sy)] = 0;
         heap.push(ANode {
             a: heuristic[start_index],
             x: sx,
@@ -228,14 +227,13 @@ impl Navigator {
                 }
 
                 route.push((sx, sy, self.t));
+                println!("Generated route from ({}, {}) to ({}, {}): {:?}", sx, sy, ex, ey, route);
                 self.expiration.insert(id, EXPIRE_TIME);
                 self.reserved.insert((sx, sy, self.t));
                 self.routes.insert(id, route);
                 self.targets.insert(id, (ex, ey));
                 return Self::to_direction(current.0 - sx, current.1 - sy)
             }
-
-            let node_index = self.index(node.x, node.y);
 
             // Staying still is always an option
             let next_cost = if node.x == ex && node.y == ey { node.a } else { node.a + 1 };
@@ -256,7 +254,7 @@ impl Navigator {
             // Able to move if under max heat
             if node.h < MAX_HEAT {
                 let turns = (node.t + 1 - self.t) as Distance;
-                for &(x, y) in &self.terrain[node_index] {
+                for &(x, y) in &self.terrain[self.index(node.x, node.y)] {
                     if !self.reserved.contains(&(x, y, node.t + 1))
                     && !self.enemies.contains(&(x, y)) {
                         path.insert((x, y, node.t + 1),

@@ -65,7 +65,6 @@ fn main() {
     let production_queue = [Knight,Knight, Knight, Knight,Healer];
 
     loop {
-        println!("{}", gc.get_time_left_ms());
         nav.refresh(&gc);
 
         // Update Karb Map
@@ -95,40 +94,40 @@ fn main() {
         let healers = get_type(&gc, Healer);
 
         // FACTORY
-        for fact in &fin_facts {
-            if workers.len() == 0 {
-                try_produce(&mut gc,fact,Worker);
-            }
-            else if !(gc.research_info().unwrap().get_level(&Rocket) > 0 && un_rockets.len() + fin_rockets.len() ==0) {
-                try_produce(&mut gc, fact, production_queue[prod_num%production_queue.len()]);
-                prod_num = (prod_num+1)%production_queue.len();
-            }
-            try_unload(&mut gc,fact)
-        }
+        // for fact in &fin_facts {
+        //     if workers.len() == 0 {
+        //         try_produce(&mut gc,fact,Worker);
+        //     }
+        //     else if !(gc.research_info().unwrap().get_level(&Rocket) > 0 && un_rockets.len() + fin_rockets.len() ==0) {
+        //         try_produce(&mut gc, fact, production_queue[prod_num%production_queue.len()]);
+        //         prod_num = (prod_num+1)%production_queue.len();
+        //     }
+        //     try_unload(&mut gc,fact)
+        // }
 
         // ROCKET
-        for rocket in &fin_rockets {
-            if !rocket.rocket_is_used().unwrap() {
-                let num_loaded = try_load(&mut gc, rocket);
-                if rocket.structure_garrison().unwrap().len() + num_loaded >= 8 {
-                    let xRange = Range::new(0, gc.starting_map(Planet::Mars).width);
-                    let yRange = Range::new(0, gc.starting_map(Planet::Mars).height);
-                    let mut rng = rand::thread_rng();
-                    let x = xRange.ind_sample(&mut rng);
-                    let y = yRange.ind_sample(&mut rng);
+        // for rocket in &fin_rockets {
+        //     if !rocket.rocket_is_used().unwrap() {
+        //         let num_loaded = try_load(&mut gc, rocket);
+        //         if rocket.structure_garrison().unwrap().len() + num_loaded >= 8 {
+        //             let xRange = Range::new(0, gc.starting_map(Planet::Mars).width);
+        //             let yRange = Range::new(0, gc.starting_map(Planet::Mars).height);
+        //             let mut rng = rand::thread_rng();
+        //             let x = xRange.ind_sample(&mut rng);
+        //             let y = yRange.ind_sample(&mut rng);
 
-                    let loc = MapLocation::new(Planet::Mars,x as i32,y as i32);
-                    if gc.can_launch_rocket(rocket.id(),loc) {
-                        gc.launch_rocket(rocket.id(),loc);
-                    }
-                }
-            }
-            else {
-                if rocket.structure_garrison().unwrap().len() > 0 {
-                    try_unload(&mut gc, rocket);
-                }
-            }
-        }
+        //             let loc = MapLocation::new(Planet::Mars,x as i32,y as i32);
+        //             if gc.can_launch_rocket(rocket.id(),loc) {
+        //                 gc.launch_rocket(rocket.id(),loc);
+        //             }
+        //         }
+        //     }
+        //     else {
+        //         if rocket.structure_garrison().unwrap().len() > 0 {
+        //             try_unload(&mut gc, rocket);
+        //         }
+        //     }
+        // }
 
         let workers = get_type(&gc, Worker);
         // WORKER
@@ -159,20 +158,20 @@ fn main() {
             // else if gc.research_info().unwrap().get_level(&Rocket)>0 && try_blueprint(&mut gc,worker,Rocket){
 
             // }
-            if try_harvest(&mut gc, worker) {
+            // if try_harvest(&mut gc, worker) {
 
-            }
+            // }
 
-            if un_facts.len() > 0 {
-                try_move_to(&mut gc, &mut nav, worker, &un_facts[0].location().map_location().unwrap());
-            }
-            else if un_rockets.len() > 0{
-                try_move_to(&mut gc, &mut nav, worker, &un_rockets[0].location().map_location().unwrap());
-            }
-            else if fin_rockets.len() > 0 && gc.planet() != Planet::Mars {
-                try_move_to(&mut gc, &mut nav, worker, &fin_rockets[0].location().map_location().unwrap());
-            }
-            else if karb_locs.keys().len() >0 {
+            // if un_facts.len() > 0 {
+            //     try_move_to(&mut gc, &mut nav, worker, &un_facts[0].location().map_location().unwrap());
+            // }
+            // else if un_rockets.len() > 0{
+            //     try_move_to(&mut gc, &mut nav, worker, &un_rockets[0].location().map_location().unwrap());
+            // }
+            // else if fin_rockets.len() > 0 && gc.planet() != Planet::Mars {
+            //     try_move_to(&mut gc, &mut nav, worker, &fin_rockets[0].location().map_location().unwrap());
+            // }
+            if karb_locs.keys().len() >0 {
                 let mut locs = karb_locs.keys().collect::<Vec<_>>();
                 locs.sort_by_key(|loc| nav.moves_between(&worker.location().map_location().unwrap(),loc));
                 try_move_to(&mut gc, &mut nav, worker, locs[0]);
