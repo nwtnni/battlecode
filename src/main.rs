@@ -44,6 +44,8 @@ fn main() {
     gc.queue_research(Healer);
     gc.queue_research(Healer);
     gc.queue_research(Rocket);
+    gc.queue_research(Ranger);
+    gc.queue_research(Ranger);
     gc.queue_research(Mage);
     gc.queue_research(Mage);
 
@@ -107,10 +109,21 @@ fn main() {
 
         if gc.planet() == Planet::Earth {
             if rally != None && gc.has_unit_at_location(rally.unwrap()) && gc.sense_unit_at_location(rally.unwrap()).unwrap().team() == gc.team() && gc.sense_unit_at_location(rally.unwrap()).unwrap().unit_type() != Worker {
-
-                loc_num = (loc_num +1)%starting_en_units.len();
+                loc_num = (loc_num +1);
                 if loc_num < starting_en_units.len() {
                     rally = starting_en_units.get(loc_num).map(|unit| loc(unit));
+                }
+                else {
+                    let x_range = Range::new(0, starting_map.width);
+                    let y_range = Range::new(0, starting_map.height);
+                    let mut rng = rand::thread_rng();
+                    let x = x_range.ind_sample(&mut rng);
+                    let y = y_range.ind_sample(&mut rng);
+
+                    let loc = MapLocation::new(gc.planet(),x as i32,y as i32);
+                    if starting_map.is_passable_terrain_at(loc).unwrap() {
+                        rally = Some(loc);
+                    }
                 }
             }
         }
@@ -171,7 +184,7 @@ fn main() {
                 let period = gc.orbit_pattern().period;
                 let amplitude = gc.orbit_pattern().amplitude;
                 let velocity = amplitude as f64 *2.0 as f64 *PI/period as f64 * (gc.round() as f64 *2.0 as f64 *PI/period as f64).cos();
-                
+
                 if (rocket.structure_garrison().unwrap().len() + num_loaded >= 8 && velocity < 1.0) || (rocket.health() != rocket.max_health() && rocket.structure_garrison().unwrap().len() + num_loaded > 0){
                     let x_range = Range::new(0, gc.starting_map(Planet::Mars).width);
                     let y_range = Range::new(0, gc.starting_map(Planet::Mars).height);
@@ -222,13 +235,14 @@ fn main() {
 
             let knight_loc = loc(knight);
 
-            let mut nearby_units = gc.sense_nearby_units_by_team(knight_loc, knight.vision_range()*2, gc.team().other());
+            let mut nearby_units = gc.sense_nearby_units_by_team(knight_loc, 64, gc.team().other());
             nearby_units.sort_by_key(|en| nav.moves_between(&knight_loc, &loc(en)));
             if nearby_units.len() != 0 {
                 let friends = gc.sense_nearby_units_by_team(knight_loc, 9, gc.team());
                 let mut enemies = gc.sense_nearby_units_by_team(knight_loc, 64, gc.team().other());
                 enemies.retain(|en| en.unit_type().is_robot() && en.unit_type() != Worker && en.unit_type() != Healer);
                 enemies.retain(|en| loc(en).distance_squared_to(knight_loc) <= en.attack_range().unwrap());
+
                 if friends.len() >= enemies.len() || (enemies.len() != 0 && nav.moves_between(&knight_loc, &loc(&nearby_units[0])) <= 3) {
                     try_move_to(&mut nav, knight, &loc(&nearby_units[0]));
                 }
