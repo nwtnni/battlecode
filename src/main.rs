@@ -21,6 +21,8 @@ use fnv::FnvHashMap;
 use fnv::FnvHashSet;
 
 use rand::distributions::{IndependentSample, Range};
+use std::f64::consts::PI;
+use std::f64;
 
 const DIRECTIONS: [Direction;9] = [Center,North,Northeast,East,Southeast,South,Southwest,West,Northwest];
 
@@ -37,11 +39,13 @@ fn main() {
     gc.queue_research(Knight);
     gc.queue_research(Knight);
     gc.queue_research(Healer);
-    gc.queue_research(Rocket);
-    gc.queue_research(Mage);
     gc.queue_research(Knight);
+    gc.queue_research(Rocket);
     gc.queue_research(Healer);
     gc.queue_research(Healer);
+    gc.queue_research(Rocket);
+    gc.queue_research(Ranger);
+    gc.queue_research(Ranger);
     gc.queue_research(Mage);
     gc.queue_research(Mage);
 
@@ -102,10 +106,39 @@ fn main() {
         }
 
         seen_locs.iter_mut().for_each(|(_, time)| *time += 1);
-        if rally != None && gc.has_unit_at_location(rally.unwrap()) && gc.sense_unit_at_location(rally.unwrap()).unwrap().team() == gc.team() && gc.sense_unit_at_location(rally.unwrap()).unwrap().unit_type() != Worker {
-            loc_num = (loc_num +1)%starting_en_units.len();
-            if loc_num < starting_en_units.len() {
-                rally = starting_en_units.get(loc_num).map(|unit| loc(unit));
+
+        if gc.planet() == Planet::Earth {
+            if rally != None && gc.has_unit_at_location(rally.unwrap()) && gc.sense_unit_at_location(rally.unwrap()).unwrap().team() == gc.team() && gc.sense_unit_at_location(rally.unwrap()).unwrap().unit_type() != Worker {
+                loc_num = (loc_num +1);
+                if loc_num < starting_en_units.len() {
+                    rally = starting_en_units.get(loc_num).map(|unit| loc(unit));
+                }
+                else {
+                    let x_range = Range::new(0, starting_map.width);
+                    let y_range = Range::new(0, starting_map.height);
+                    let mut rng = rand::thread_rng();
+                    let x = x_range.ind_sample(&mut rng);
+                    let y = y_range.ind_sample(&mut rng);
+
+                    let loc = MapLocation::new(gc.planet(),x as i32,y as i32);
+                    if starting_map.is_passable_terrain_at(loc).unwrap() {
+                        rally = Some(loc);
+                    }
+                }
+            }
+        }
+        else {
+            if rally == None || gc.has_unit_at_location(rally.unwrap()) && gc.sense_unit_at_location(rally.unwrap()).unwrap().team() == gc.team() && gc.sense_unit_at_location(rally.unwrap()).unwrap().unit_type() != Worker{
+                let x_range = Range::new(0, gc.starting_map(Planet::Mars).width);
+                let y_range = Range::new(0, gc.starting_map(Planet::Mars).height);
+                let mut rng = rand::thread_rng();
+                let x = x_range.ind_sample(&mut rng);
+                let y = y_range.ind_sample(&mut rng);
+
+                let loc = MapLocation::new(Planet::Mars,x as i32,y as i32);
+                if starting_map.is_passable_terrain_at(loc).unwrap() {
+                    rally = Some(loc);
+                }
             }
         }
 
@@ -144,29 +177,6 @@ fn main() {
             try_unload(&mut gc,fact)
         }
 
-        // ROCKET
-        for rocket in &fin_rockets {
-            if !rocket.rocket_is_used().unwrap() {
-                if rocket.structure_garrison().unwrap().len() == rocket.structure_max_capacity().unwrap() {
-                    let x_range = Range::new(0, gc.starting_map(Planet::Mars).width);
-                    let y_range = Range::new(0, gc.starting_map(Planet::Mars).height);
-                    let mut rng = rand::thread_rng();
-                    let x = x_range.ind_sample(&mut rng);
-                    let y = y_range.ind_sample(&mut rng);
-
-                    let loc = MapLocation::new(Planet::Mars,x as i32,y as i32);
-                    if gc.can_launch_rocket(rocket.id(),loc) {
-                        gc.launch_rocket(rocket.id(),loc);
-                    }
-                }
-            }
-            else {
-                if rocket.structure_garrison().unwrap().len() > 0 {
-                    try_unload(&mut gc, rocket);
-                }
-            }
-        }
-
         let workers = get_type(&gc, Worker);
 
         // WORKER
@@ -197,13 +207,14 @@ fn main() {
 
             let knight_loc = loc(knight);
 
-            let mut nearby_units = gc.sense_nearby_units_by_team(knight_loc, knight.vision_range()*2, gc.team().other());
+            let mut nearby_units = gc.sense_nearby_units_by_team(knight_loc, 64, gc.team().other());
             nearby_units.sort_by_key(|en| nav.moves_between(&knight_loc, &loc(en)));
             if nearby_units.len() != 0 {
                 let friends = gc.sense_nearby_units_by_team(knight_loc, 9, gc.team());
                 let mut enemies = gc.sense_nearby_units_by_team(knight_loc, 64, gc.team().other());
                 enemies.retain(|en| en.unit_type().is_robot() && en.unit_type() != Worker && en.unit_type() != Healer);
                 enemies.retain(|en| loc(en).distance_squared_to(knight_loc) <= en.attack_range().unwrap());
+
                 if friends.len() >= enemies.len() || (enemies.len() != 0 && nav.moves_between(&knight_loc, &loc(&nearby_units[0])) <= 3) {
                     try_move_to(&mut nav, knight, &loc(&nearby_units[0]));
                 }
@@ -239,6 +250,9 @@ fn main() {
                         try_move_to(&mut nav, ranger, &start.unwrap());
                     }
                 }
+                else {
+                    try_move_to(&mut nav, ranger, &ranger_loc);
+                }
             }
             else if rally != None && try_move_to(&mut nav, ranger, &rally.unwrap()) {
 
@@ -257,7 +271,7 @@ fn main() {
                 overcharged_units.push(overcharged);
             }
 
-            let mut nearby_units = gc.sense_nearby_units_by_team(healer_loc, 64, gc.team().other());
+            let mut nearby_units = gc.sense_nearby_units_by_team(healer_loc, 50, gc.team().other());
             nearby_units.sort_by_key(|en| nav.moves_between(&healer_loc, &loc(en)));
             if nearby_units.len() != 0 {
                 let friends = gc.sense_nearby_units_by_team(healer_loc, 25, gc.team());
@@ -270,6 +284,9 @@ fn main() {
                     if start != None {
                         try_move_to(&mut nav, healer, &start.unwrap());
                     }
+                }
+                else {
+                    try_move_to(&mut nav, healer, &healer_loc);
                 }
             }
             else if rally != None {
@@ -294,7 +311,37 @@ fn main() {
         for ranger in &rangers { try_attack(&mut gc, &mut nav, ranger); }
         for healer in &healers { try_heal(&mut gc, &mut nav, healer); }
 
+        // ROCKET
+        let (fin_rockets,_):(Vec<_>,Vec<_>) = get_type(&gc,Rocket)
+            .into_iter().partition(|rocket| rocket.structure_is_built().unwrap());
+        for rocket in &fin_rockets {
+            if !rocket.rocket_is_used().unwrap() {
+                let period = gc.orbit_pattern().period;
+                let amplitude = gc.orbit_pattern().amplitude;
+                let velocity = amplitude as f64 *2.0 as f64 *PI/period as f64 * (gc.round() as f64 *2.0 as f64 *PI/period as f64).cos();
+
+                if (rocket.structure_garrison().unwrap().len() >= 8 && velocity < 1.0) || (rocket.health() != rocket.max_health() && rocket.structure_garrison().unwrap().len() > 0) {
+                    let x_range = Range::new(0, gc.starting_map(Planet::Mars).width);
+                    let y_range = Range::new(0, gc.starting_map(Planet::Mars).height);
+                    let mut rng = rand::thread_rng();
+                    let x = x_range.ind_sample(&mut rng);
+                    let y = y_range.ind_sample(&mut rng);
+
+                    let loc = MapLocation::new(Planet::Mars,x as i32,y as i32);
+                    if gc.can_launch_rocket(rocket.id(),loc) {
+                        gc.launch_rocket(rocket.id(),loc);
+                    }
+                }
+            }
+            else {
+                if rocket.structure_garrison().unwrap().len() > 0 {
+                    try_unload(&mut gc, rocket);
+                }
+            }
+        }
+
         gc.next_turn();
+
     }
 }
 
@@ -388,8 +435,7 @@ fn try_unload(gc: &mut GameController, building: &Unit) {
 fn try_load(gc: &mut GameController, rocket: &Unit, boarding: &FnvHashSet<u16>) -> usize {
     let mut num_loaded = 0;
     for unit in gc.sense_nearby_units_by_team(loc(rocket), 2, gc.team()) {
-        if rocket.structure_garrison().unwrap().len() < 8
-        && boarding.contains(&unit.id())
+        if boarding.contains(&unit.id())
         && gc.can_load(rocket.id(),unit.id()) {
             gc.load(rocket.id(),unit.id());
             num_loaded += 1;
@@ -401,9 +447,17 @@ fn try_load(gc: &mut GameController, rocket: &Unit, boarding: &FnvHashSet<u16>) 
 // ARMY METHODS
 fn try_attack(gc: &mut GameController, nav: &mut Navigator, unit: &Unit) -> bool {
     let mut en_units = gc.sense_nearby_units_by_team(loc(unit) ,unit.attack_range().unwrap(),unit.team().other());
-    en_units.sort_by_key(|en| en.health());
+    let (mut worker, mut other):(Vec<_>,Vec<_>) = en_units.into_iter().partition(|en| en.unit_type() == Worker);
+    worker.sort_by_key(|en| en.health());
+    other.sort_by_key(|en| en.health());
     if gc.is_attack_ready(unit.id()) {
-        for enemy in en_units {
+        for enemy in other {
+            if gc.can_attack(unit.id(),enemy.id()) {
+                gc.attack(unit.id(),enemy.id());
+                return true
+            }
+        }
+        for enemy in worker {
             if gc.can_attack(unit.id(),enemy.id()) {
                 gc.attack(unit.id(),enemy.id());
                 return true
@@ -435,7 +489,7 @@ fn try_overcharge(gc: &mut GameController, nav: &mut Navigator, healer: &Unit) -
             if !friend.unit_type().is_robot() || friend.unit_type() == Worker {
                 continue
             }
-            if friend.ability_heat().unwrap() >=10 && gc.can_overcharge(healer.id(),friend.id()) {
+            if (friend.ability_heat().unwrap() >=10 || (friend.attack_heat().unwrap() >= 10 && friend.unit_type() == Ranger)) && gc.can_overcharge(healer.id(),friend.id()) {
                 gc.overcharge(healer.id(),friend.id());
                 return Some(friend.id())
             }
