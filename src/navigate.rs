@@ -148,6 +148,13 @@ impl Navigator {
         let heat = unit.movement_heat().unwrap() as Heat;
         let (sx, sy) = (start.x as Distance, start.y as Distance);
         let (ex, ey) = (end.x as Distance, end.y as Distance);
+        if !self.cache.contains_key(&(ex, ey)) {
+            self.cache_bfs(end);
+        }
+
+        if self.moves_between(&start, &end) as usize > (self.w as usize*self.h as usize) {
+            return
+        }
 
         if let Some(&(x, y)) = self.targets.get(&id) {
             if x == ex && y == ey {
@@ -165,10 +172,6 @@ impl Navigator {
             for (x, y, t, _) in self.routes.remove(&id).unwrap() {
                 self.reserved.remove(&(x, y, t));
             }
-        }
-
-        if !self.cache.contains_key(&(ex, ey)) {
-            self.cache_bfs(end);
         }
         self.a_star(unit, &start, end)
     }
