@@ -21,6 +21,8 @@ use fnv::FnvHashMap;
 use fnv::FnvHashSet;
 
 use rand::distributions::{IndependentSample, Range};
+use std::f64::consts::PI;
+use std::f64;
 
 const DIRECTIONS: [Direction;9] = [Center,North,Northeast,East,Southeast,South,Southwest,West,Northwest];
 
@@ -41,6 +43,7 @@ fn main() {
     gc.queue_research(Rocket);
     gc.queue_research(Healer);
     gc.queue_research(Healer);
+    gc.queue_research(Rocket);
     gc.queue_research(Mage);
     gc.queue_research(Mage);
 
@@ -101,6 +104,7 @@ fn main() {
         }
 
         seen_locs.iter_mut().for_each(|(_, time)| *time += 1);
+
         if rally != None && gc.has_unit_at_location(rally.unwrap()) && gc.sense_unit_at_location(rally.unwrap()).unwrap().team() == gc.team() && gc.sense_unit_at_location(rally.unwrap()).unwrap().unit_type() != Worker {
             loc_num = (loc_num +1)%starting_en_units.len();
             if loc_num < starting_en_units.len() {
@@ -147,7 +151,10 @@ fn main() {
         for rocket in &fin_rockets {
             if !rocket.rocket_is_used().unwrap() {
                 let num_loaded = try_load(&mut gc, rocket);
-                if rocket.structure_garrison().unwrap().len() + num_loaded >= 8 {
+                let period = gc.orbit_pattern().period;
+                let amplitude = gc.orbit_pattern().amplitude;
+                let velocity = amplitude as f64 * (gc.round() as f64 *2.0 as f64 *PI/period as f64).cos();
+                if rocket.structure_garrison().unwrap().len() + num_loaded >= 8 && velocity > 1.0 || rocket.health() != rocket.max_health(){
                     let x_range = Range::new(0, gc.starting_map(Planet::Mars).width);
                     let y_range = Range::new(0, gc.starting_map(Planet::Mars).height);
                     let mut rng = rand::thread_rng();
