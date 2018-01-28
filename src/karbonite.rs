@@ -6,8 +6,6 @@ use engine::location::*;
 use engine::unit::*;
 use navigate::*;
 
-const WORKERS_PER_FACTORY: usize = 4;
-const WORKERS_PER_ROCKET: usize = 4;
 const WORKERS_PER_FROCKET: usize = 4;
 
 #[derive(Debug, Eq, PartialEq)]
@@ -27,46 +25,41 @@ pub fn assign_workers(nav: &mut Navigator, workers: Vec<Unit>, karbonite: &Karbo
     let un_rockets = un_rockets.iter().map(|rocket| loc(rocket)).collect::<Vec<_>>();
     let fin_rockets = fin_rockets.iter().map(|rocket| loc(rocket)).collect::<Vec<_>>();
 
+    let mut locations = Vec::new();
     let mut optimize = Vec::new();
     for worker in &workers {
         let mut row = Vec::new();
         let worker_loc = loc(worker);
         for location in &karbonite {
-            let priority = 100 + nav.moves_between(&worker_loc, &location) as i16;
+            let priority = 5 + nav.moves_between(&worker_loc, &location) as i16;
             row.push(priority);
         }
         for location in &un_facts {
+            let neighbors = nav.neighbors(&location);
             let priority = nav.moves_between(&worker_loc, &location) as i16;
-            for _ in 0..WORKERS_PER_FACTORY { row.push(priority) }
+            for _ in 0..neighbors { row.push(priority); locations.push(location); }
         }
         for location in &un_rockets {
+            let neighbors = nav.neighbors(&location);
             let priority = nav.moves_between(&worker_loc, &location) as i16;
-            for _ in 0..WORKERS_PER_ROCKET { row.push(priority) }
+            for _ in 0..neighbors { row.push(priority); locations.push(location); }
         }
         if loc(&workers[0]).planet == Planet::Earth {
             for location in &fin_rockets {
                 let priority = nav.moves_between(&worker_loc, &location) as i16;
-                for _ in 0..WORKERS_PER_FROCKET { row.push(priority) }
+                for _ in 0..WORKERS_PER_FROCKET { row.push(priority); locations.push(location); }
             }
         }
-
         optimize.push(row);
     }
 
     let k = karbonite.len();
-    let f = k + (un_facts.len() * WORKERS_PER_FACTORY);
-    let r = f + (un_rockets.len() * WORKERS_PER_ROCKET);
-
     if optimize.len() > 0 && optimize[0].len() > 0 {
         for (worker, location) in hungarian(optimize) {
             if location < k {
                 nav.navigate(&workers[worker], &karbonite[location]);
-            } else if location < f {
-                nav.navigate(&workers[worker], &un_facts[(location - k) / WORKERS_PER_FACTORY]);
-            } else if location < r {
-                nav.navigate(&workers[worker], &un_rockets[(location - f) / WORKERS_PER_ROCKET]);
             } else {
-                nav.navigate(&workers[worker], &fin_rockets[(location - r) / WORKERS_PER_FROCKET]);
+                nav.navigate(&workers[worker], &locations[location - k]);
             }
         }
     }
