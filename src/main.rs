@@ -174,42 +174,31 @@ fn main() {
         let workers = get_type(&gc, Worker);
 
         for worker in &workers {
-            if try_build(&mut gc, worker) {
-
-            }
-            else if fin_facts.len() + un_facts.len() < 5 && try_blueprint(&mut gc,worker,Factory) {
-
-            }
-            else if gc.research_info().unwrap().get_level(&Rocket)>0 && try_blueprint(&mut gc,worker,Rocket){
-
-            }
-            else if try_harvest(&mut gc, worker) {
-
-            }
+            try_build(&mut gc, worker)
+            || (fin_facts.len() + un_facts.len() < 5 && try_blueprint(&mut gc,worker,Factory))
+            || (gc.research_info().unwrap().get_level(&Rocket)>0 && try_blueprint(&mut gc,worker,Rocket))
+            || try_harvest(&mut gc, worker);
         }
         assign_workers(&mut nav, workers, &karb_locs, &un_facts, &un_rockets, &fin_rockets);
 
         // KNIGHT
         for knight in &knights {
-            if try_attack(&mut gc, &mut nav, knight) {
+            try_attack(&mut gc, &mut nav, knight) || try_javelin(&mut gc, &mut nav, knight);
 
-            }
-            if try_javelin(&mut gc, &mut nav, knight) {
+            let knight_loc = loc(knight);
 
-            }
-
-            let mut nearby_units = gc.sense_nearby_units_by_team(loc(knight), knight.vision_range()*2, gc.team().other());
-            nearby_units.sort_by_key(|en| nav.moves_between(&loc(knight), &loc(en)));
+            let mut nearby_units = gc.sense_nearby_units_by_team(knight_loc, knight.vision_range()*2, gc.team().other());
+            nearby_units.sort_by_key(|en| nav.moves_between(&knight_loc, &loc(en)));
             if nearby_units.len() != 0 {
-                let friends = gc.sense_nearby_units_by_team(loc(knight), 9, gc.team());
-                let mut enemies = gc.sense_nearby_units_by_team(loc(knight), 50, gc.team().other());
+                let friends = gc.sense_nearby_units_by_team(knight_loc, 9, gc.team());
+                let mut enemies = gc.sense_nearby_units_by_team(knight_loc, 50, gc.team().other());
                 enemies.retain(|en| en.unit_type().is_robot() && en.unit_type() != Worker && en.unit_type() != Healer);
-                enemies.retain(|en| loc(en).distance_squared_to(loc(knight)) < en.attack_range().unwrap());
+                enemies.retain(|en| loc(en).distance_squared_to(knight_loc) < en.attack_range().unwrap());
                 if friends.len() >= enemies.len() {
                     try_move_to(&mut nav, knight, &loc(&nearby_units[0]));
                 }
                 else {
-                    let my_loc = loc(knight);
+                    let my_loc = knight_loc;
                     let en_loc = loc(&nearby_units[0]);
                     if start != None {
                         try_move_to(&mut nav, knight, &start.unwrap());
@@ -226,18 +215,19 @@ fn main() {
 
         // RANGER
         for ranger in &rangers {
-            if try_attack(&mut gc, &mut nav, ranger) {
-            }
+            try_attack(&mut gc, &mut nav, ranger);
 
-            let mut nearby_units = gc.sense_nearby_units_by_team(loc(ranger), 50, gc.team().other());
-            nearby_units.sort_by_key(|en| nav.moves_between(&loc(ranger), &loc(en)));
+            let ranger_loc = loc(ranger);
+
+            let mut nearby_units = gc.sense_nearby_units_by_team(ranger_loc, 50, gc.team().other());
+            nearby_units.sort_by_key(|en| nav.moves_between(&ranger_loc, &loc(en)));
             if nearby_units.len() != 0 {
-                let friends = gc.sense_nearby_units_by_team(loc(ranger), 25, gc.team());
-                let mut enemies = gc.sense_nearby_units_by_team(loc(ranger), 50, gc.team().other());
+                let friends = gc.sense_nearby_units_by_team(ranger_loc, 25, gc.team());
+                let mut enemies = gc.sense_nearby_units_by_team(ranger_loc, 50, gc.team().other());
                 enemies.retain(|en| en.unit_type().is_robot() && en.unit_type() != Worker && en.unit_type() != Healer);
-                enemies.retain(|en| loc(en).distance_squared_to(loc(ranger)) < en.attack_range().unwrap());
+                enemies.retain(|en| loc(en).distance_squared_to(ranger_loc) < en.attack_range().unwrap());
                 if friends.len() <= enemies.len() {
-                    let my_loc = loc(ranger);
+                    let my_loc = ranger_loc;
                     let en_loc = loc(&nearby_units[0]);
                     if start != None {
                         try_move_to(&mut nav, ranger, &start.unwrap());
@@ -256,16 +246,14 @@ fn main() {
 
         // Healer
         for healer in &healers {
-            if try_heal(&mut gc, &mut nav, healer) {
 
+            try_heal(&mut gc, &mut nav, healer);
+
+            if let Some(overcharged) = try_overcharge(&mut gc, &mut nav, healer) {
+                overcharged_units.push(overcharged);
             }
 
-            let overcharged = try_overcharge(&mut gc, &mut nav, healer);
-            if overcharged != None {
-                overcharged_units.push(overcharged.unwrap());
-            }
-
-            else if fin_rockets.len() != 0 {
+            if fin_rockets.len() != 0 {
                 try_move_to(&mut nav, healer, &loc(&fin_rockets[0]));
             }
             else if rally != None {
@@ -275,12 +263,7 @@ fn main() {
 
         for unit_id in overcharged_units {
             let unit = gc.unit(unit_id).unwrap();
-            if try_attack(&mut gc, &mut nav, &unit) {
-
-            }
-            if try_javelin(&mut gc, &mut nav, &unit) {
-
-            }
+            try_attack(&mut gc, &mut nav, &unit) || try_javelin(&mut gc, &mut nav, &unit);
         }
 
         nav.execute(&mut gc);
