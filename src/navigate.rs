@@ -5,9 +5,9 @@ use engine::map::*;
 use engine::controller::*;
 use engine::location::*;
 
-const AROUND: [Point; 9] = [
+const AROUND: [Point; 8] = [
     (-1, 1), (0, 1), (1, 1),
-    (-1, 0), (0, 0), (1, 0),
+    (-1, 0), (1, 0),
     (-1, -1), (0, -1), (1, -1),
 ];
 
@@ -32,10 +32,8 @@ struct HNode {
 pub struct Navigator {
     w: i16,
     h: i16,
-    n: u8,
     terrain: Vec<Vec<Point>>,
     cache: FnvHashMap<Point, Vec<i16>>,
-    explored: Vec<u8>,
 }
 
 impl Navigator {
@@ -44,25 +42,21 @@ impl Navigator {
         let h = map.height as i16;
         let cache = FnvHashMap::default();
 
-        let mut terrain = Vec::new();
-        let explored = vec![0; (w*h) as usize];
-        for _ in 0..(w*h) { terrain.push(Vec::new()); }
+        let mut terrain = vec![Vec::new(); (w*h) as usize];
 
         for y in 0..h {
             for x in 0..w {
                 let mut adj = &mut terrain[(y*w + x) as usize];
                 for &(dx, dy) in &AROUND {
-                    let i = y + dy;
-                    let j = x + dx;
-                    if i < 0 || i >= h || j < 0 || j >= w || (dx == 0 && dy == 0) {
-                        continue
-                    } else if map.is_passable_terrain[i as usize][j as usize] {
+                    let (i, j) = (y + dy, x + dx);
+                    if i >= 0 && i < h && j >= 0 && j < w
+                    && map.is_passable_terrain[i as usize][j as usize] {
                         adj.push((j, i));
                     }
                 }
             }
         }
-        Navigator { w, h, n: 0, terrain, cache, explored }
+        Navigator { w, h, terrain, cache }
     }
 
     pub fn moves_between(&mut self, start: &MapLocation, end: &MapLocation) -> i16 {
@@ -72,14 +66,6 @@ impl Navigator {
             self.cache_bfs(end);
         }
         self.cache[&(ex, ey)][self.index(sx, sy)]
-    }
-
-    pub fn smart(&mut self, gc: &GameController, start: &MapLocation, end: &MapLocation) -> Option<Direction> {
-        let (ex, ey) = (end.x as i16, end.y as i16);
-        if !self.cache.contains_key(&(ex, ey)) {
-            self.cache_bfs(end);
-        }
-        self.a_star(gc, start, end).or(self.bfs(gc, start, end))
     }
 
     pub fn dumb(&mut self, gc: &GameController, start: &MapLocation, end: &MapLocation) -> Option<Direction> {
@@ -110,77 +96,24 @@ impl Navigator {
         let (ex, ey) = (end.x as i16, end.y as i16);
         let mut distances = vec![i16::max_value(); (self.w*self.h) as usize];
         let mut heap = BinaryHeap::default();
-        self.n = self.n.wrapping_add(1);
-        distances[self.index(ex, ey)] = 0;
         heap.push(Node { d: 0, x: ex, y: ey });
+        distances[self.index(ex, ey)] = 0;
 
         while let Some(node) = heap.pop() {
             let node_index = self.index(node.x, node.y);
             let d = distances[node_index];
-            self.explored[node_index] = self.n;
+            if d < node.d { continue }
 
             for &(x, y) in &self.terrain[node_index] {
                 let next_index = self.index(x, y);
-                let da = d + 1;
-                let db = distances[next_index];
-                if self.explored[next_index] == self.n { continue }
-
-                if da < db {
-                    distances[next_index] = da;
-                    heap.push(Node { d: da, x, y });
+                let next_d = d + 1;
+                if next_d < distances[next_index] {
+                    distances[next_index] = next_d;
+                    heap.push(Node { d: next_d, x, y });
                 }
             }
         }
         self.cache.insert((ex, ey), distances);
-    }
-
-    fn a_star(&mut self, gc: &GameController, start: &MapLocation, end: &MapLocation) -> Option<Direction> {
-        if start == end { return None }
-        let (sx, sy) = (start.x as i16, start.y as i16);
-        let (ex, ey) = (end.x as i16, end.y as i16);
-        self.n = self.n.wrapping_add(1);
-
-        let heuristic = &self.cache[&(ex, ey)];
-        let mut distances = vec![i16::max_value(); (self.w*self.h) as usize];
-        let mut heap = BinaryHeap::default();
-        let mut path = FnvHashMap::default();
-
-        distances[self.index(sx, sy)] = 0;
-        heap.push(HNode { h: 0, d: 0, x: sx, y: sy });
-
-        while let Some(node) = heap.pop() {
-
-            // Found goal
-            if node.x == ex && node.y == ey { break }
-            let node_index = self.index(node.x, node.y);
-            self.explored[node_index] = self.n;
-            let d = distances[node_index];
-
-            for &(x, y) in &self.terrain[node_index] {
-                let next = MapLocation::new(gc.planet(), x as i32, y as i32);
-                let next_index = self.index(x, y);
-                let (da, db) = (d + 1, distances[next_index]);
-
-                if self.explored[next_index] == self.n || (!(x == ex && y == ey)
-                && gc.can_sense_location(next) && !gc.is_occupiable(next).unwrap()) {
-                    continue
-                }
-
-                if da < db {
-                    distances[next_index] = da;
-                    path.insert((x, y), (node.x, node.y));
-                    heap.push(HNode { h: da + heuristic[next_index], d: da , x, y });
-                }
-            }
-        }
-
-        // Retrace path
-        let mut node = (ex, ey);
-        while let Some(&prev) = path.get(&node) {
-            if prev == (sx, sy) { break } else { node = prev; }
-        }
-
-        Self::to_direction(node.0 - sx, node.1 - sy)
     }
 
     fn bfs(&self, gc: &GameController, start: &MapLocation, end: &MapLocation) -> Option<Direction> {
@@ -191,12 +124,11 @@ impl Navigator {
         let mut min = i16::max_value();
 
         for &(dx, dy) in &AROUND {
-            let (i, j) = (sx + dx, sy + dy);
-            if i < 0 || i >= self.h || j < 0 || j >= self.w { continue }
-            let distance = distances[self.index(j, i)];
-            if distance > min { continue }
-            let target = MapLocation::new(start.planet, j as i32, i as i32);
-            if (dx == 0 && dy == 0) || !gc.can_sense_location(target) || gc.is_occupiable(target).unwrap() {
+            let (nx, ny) = (sx + dx, sy + dy);
+            if nx < 0 || nx >= self.w || ny < 0 || ny >= self.w { continue }
+            let distance = distances[self.index(nx, ny)];
+            let target = MapLocation::new(start.planet, nx as i32, ny as i32);
+            if distance < min && (!gc.can_sense_location(target) || gc.is_occupiable(target).unwrap()) {
                 x = dx;
                 y = dy;
                 min = distance;

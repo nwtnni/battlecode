@@ -4,6 +4,6 @@ version = "0.1.0"
 authors = ["Newton Ni <nwtnni@gmail.com>"]
 
 [dependencies]
-battlecode-engine = { path = "/home/aaron/battlecode-2018/battlecode-engine" }
+battlecode-engine = { path = "../battlecode-engine" }
 fnv = "1.0.6"
 rand = "0.4"
