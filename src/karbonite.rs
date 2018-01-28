@@ -17,11 +17,12 @@ fn loc(unit: &Unit) -> MapLocation {
 }
 
 pub fn assign_workers(nav: &mut Navigator, workers: Vec<Unit>, karbonite: &Karbonite,
-    un_facts: &Vec<Unit>, un_rockets: &Vec<Unit>, fin_rockets: &Vec<Unit>) {
+    un_facts: &Vec<Unit>, fin_facts: &Vec<Unit>, un_rockets: &Vec<Unit>, fin_rockets: &Vec<Unit>) {
 
     if workers.len() <= 0 { return }
     let karbonite = karbonite.keys().collect::<Vec<_>>();
     let un_facts = un_facts.iter().map(|fact| loc(fact)).collect::<Vec<_>>();
+    let fin_facts = fin_facts.iter().map(|fact| loc(fact)).collect::<Vec<_>>();
     let un_rockets = un_rockets.iter().map(|rocket| loc(rocket)).collect::<Vec<_>>();
     let fin_rockets = fin_rockets.iter().map(|rocket| loc(rocket)).collect::<Vec<_>>();
 
@@ -37,6 +38,11 @@ pub fn assign_workers(nav: &mut Navigator, workers: Vec<Unit>, karbonite: &Karbo
         for location in &un_facts {
             let neighbors = nav.neighbors(&location);
             let priority = nav.moves_between(&worker_loc, &location) as i16;
+            for _ in 0..neighbors { row.push(priority); locations.push(location); }
+        }
+        for location in &fin_facts {
+            let neighbors = nav.neighbors(&location) - 1;
+            let priority = 100 + nav.moves_between(&worker_loc, &location) as i16;
             for _ in 0..neighbors { row.push(priority); locations.push(location); }
         }
         for location in &un_rockets {
