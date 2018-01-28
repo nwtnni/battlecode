@@ -37,9 +37,8 @@ fn main() {
     gc.queue_research(Knight);
     gc.queue_research(Knight);
     gc.queue_research(Healer);
-    gc.queue_research(Rocket);
-    gc.queue_research(Mage);
     gc.queue_research(Knight);
+    gc.queue_research(Rocket);
     gc.queue_research(Healer);
     gc.queue_research(Healer);
     gc.queue_research(Mage);
@@ -186,7 +185,7 @@ fn main() {
             try_build(&mut gc, worker)
             || (fin_facts.len() + un_facts.len() < 6 && try_blueprint(&mut gc, &nav, worker,Factory))
             || (gc.research_info().unwrap().get_level(&Rocket)>0 && try_blueprint(&mut gc, &nav, worker,Rocket))
-            || try_harvest(&mut gc, worker);
+            || try_harvest(&mut gc, worker)
             || try_repair(&mut gc, worker);
         }
         assign_workers(&mut nav, workers, &karb_locs, &un_facts, &fin_facts, &un_rockets, &fin_rockets);
