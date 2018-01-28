@@ -204,11 +204,9 @@ fn main() {
                         try_move_to(&mut nav, knight, &start.unwrap());
                     }
                 }
-            }
-            if fin_rockets.len() != 0 {
+            } else if fin_rockets.len() != 0 {
                 try_move_to(&mut nav, knight, &loc(&fin_rockets[0]));
-            }
-            else if rally != None {
+            } else if rally != None {
                 try_move_to(&mut nav, knight, &rally.unwrap());
             }
         }
