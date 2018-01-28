@@ -15,7 +15,7 @@ use Direction::*;
 use UnitType::*;
 
 use bc::navigate::*;
-use bc::karbonite::*;
+use bc::assign::*;
 
 use fnv::FnvHashMap;
 use fnv::FnvHashSet;
@@ -147,8 +147,7 @@ fn main() {
         // ROCKET
         for rocket in &fin_rockets {
             if !rocket.rocket_is_used().unwrap() {
-                let num_loaded = try_load(&mut gc, rocket);
-                if rocket.structure_garrison().unwrap().len() + num_loaded >= 8 {
+                if rocket.structure_garrison().unwrap().len() == rocket.structure_max_capacity().unwrap() {
                     let x_range = Range::new(0, gc.starting_map(Planet::Mars).width);
                     let y_range = Range::new(0, gc.starting_map(Planet::Mars).height);
                     let mut rng = rand::thread_rng();
@@ -189,11 +188,11 @@ fn main() {
             || try_harvest(&mut gc, worker)
             || try_repair(&mut gc, worker);
         }
-        assign_workers(&mut nav, workers, &karb_locs, &un_facts, &fin_facts, &un_rockets, &fin_rockets);
+        assign_workers(&mut nav, &workers, &karb_locs, &un_facts, &fin_facts, &un_rockets);
 
         // KNIGHT
         for knight in &knights {
-            try_attack(&mut gc, &mut nav, knight); 
+            try_attack(&mut gc, &mut nav, knight);
             try_javelin(&mut gc, &mut nav, knight);
 
             let knight_loc = loc(knight);
@@ -215,8 +214,6 @@ fn main() {
                         try_move_to(&mut nav, knight, &start.unwrap());
                     }
                 }
-            } else if fin_rockets.len() != 0 {
-                try_move_to(&mut nav, knight, &loc(&fin_rockets[0]));
             } else if rally != None {
                 try_move_to(&mut nav, knight, &rally.unwrap());
             }
@@ -242,9 +239,6 @@ fn main() {
                         try_move_to(&mut nav, ranger, &start.unwrap());
                     }
                 }
-            }
-            else if fin_rockets.len() != 0 {
-                try_move_to(&mut nav, ranger, &loc(&fin_rockets[0]));
             }
             else if rally != None && try_move_to(&mut nav, ranger, &rally.unwrap()) {
 
@@ -278,9 +272,6 @@ fn main() {
                     }
                 }
             }
-            else if fin_rockets.len() != 0 {
-                try_move_to(&mut nav, healer, &loc(&fin_rockets[0]));
-            }
             else if rally != None {
                 try_move_to(&mut nav, healer, &rally.unwrap());
             }
@@ -291,7 +282,13 @@ fn main() {
             try_attack(&mut gc, &mut nav, &unit) || try_javelin(&mut gc, &mut nav, &unit);
         }
 
-        nav.execute(&mut gc);
+        if gc.planet() == Planet::Earth {
+            let boarding = assign_rockets(&mut nav, &gc, &fin_rockets, &workers, &knights, &rangers, &healers);
+            nav.execute(&mut gc);
+            for rocket in &fin_rockets { try_load(&mut gc, rocket, &boarding); }
+        } else {
+            nav.execute(&mut gc);
+        }
 
         for knight in &knights { try_attack(&mut gc, &mut nav, knight); try_javelin(&mut gc, &mut nav, knight); }
         for ranger in &rangers { try_attack(&mut gc, &mut nav, ranger); }
@@ -388,10 +385,12 @@ fn try_unload(gc: &mut GameController, building: &Unit) {
 }
 
 // ROCKET METHODS
-fn try_load(gc: &mut GameController, rocket: &Unit) -> usize {
+fn try_load(gc: &mut GameController, rocket: &Unit, boarding: &FnvHashSet<u16>) -> usize {
     let mut num_loaded = 0;
     for unit in gc.sense_nearby_units_by_team(loc(rocket), 2, gc.team()) {
-        if rocket.structure_garrison().unwrap().len() < 8 && gc.can_load(rocket.id(),unit.id()) {
+        if rocket.structure_garrison().unwrap().len() < 8
+        && boarding.contains(&unit.id())
+        && gc.can_load(rocket.id(),unit.id()) {
             gc.load(rocket.id(),unit.id());
             num_loaded += 1;
         }

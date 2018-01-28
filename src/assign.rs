@@ -6,8 +6,6 @@ use engine::location::*;
 use engine::unit::*;
 use navigate::*;
 
-const WORKERS_PER_FROCKET: usize = 4;
-
 #[derive(Debug, Eq, PartialEq)]
 enum Type { Star, Prime }
 type Karbonite = FnvHashMap<MapLocation, u32>;
@@ -16,19 +14,118 @@ fn loc(unit: &Unit) -> MapLocation {
     unit.location().map_location().unwrap()
 }
 
-pub fn assign_workers(nav: &mut Navigator, workers: Vec<Unit>, karbonite: &Karbonite,
-    un_facts: &Vec<Unit>, fin_facts: &Vec<Unit>, un_rockets: &Vec<Unit>, fin_rockets: &Vec<Unit>) {
+pub fn assign_rockets(nav: &mut Navigator, gc: &GameController, fin_rockets: &Vec<Unit>,
+    workers: &Vec<Unit>, knights: &Vec<Unit>, rangers: &Vec<Unit>, healers: &Vec<Unit>) -> FnvHashSet<u16> {
+
+    let worker_spots = fin_rockets.iter()
+        .enumerate()
+        .filter(|&(_, rocket)| {
+            let garrison = rocket.structure_garrison().unwrap();
+            garrison.iter().all(|&unit| {
+                gc.unit(unit).unwrap().unit_type() != UnitType::Worker
+            }) && garrison.len() < rocket.structure_max_capacity().unwrap()
+        })
+        .map(|(i, rocket)| (i, loc(rocket)))
+        .collect::<Vec<_>>();
+
+    let worker_locs = workers.iter()
+        .map(|worker| loc(worker)).collect::<Vec<_>>();
+
+    let mut optimize_workers = Vec::new();
+    for &(_, spot) in &worker_spots {
+        let mut row = Vec::new();
+        for worker in &worker_locs {
+            row.push(nav.moves_between(&worker, &spot) as i16);
+        }
+        optimize_workers.push(row);
+    }
+
+    let mut assignments = FnvHashSet::default();
+    let assigned_workers = if worker_locs.len() > 0 && worker_spots.len() > 0 {
+        let optimized = hungarian(optimize_workers);
+        for (&spot, _) in &optimized {
+            let &(i, _) = &worker_spots[spot];
+            assignments.insert(fin_rockets[i].id());
+        }
+        Some(optimized)
+    } else { None };
+
+    let soldier_spots = fin_rockets.iter()
+        .filter_map(|rocket| {
+            let garrison = rocket.structure_garrison().unwrap();
+            let worker = if assignments.contains(&rocket.id()) { 1 } else { 0 };
+            let needed = rocket.structure_max_capacity().unwrap() - garrison.len() - worker;
+            if needed > 0 { Some((needed, loc(rocket))) } else { None }
+        }).collect::<Vec<_>>();
+
+    let mut needed_spots = Vec::new();
+    let mut optimize_soldiers = Vec::new();
+    for &(needed, spot) in &soldier_spots {
+        for _ in 0..needed {
+            needed_spots.push(spot);
+            let mut row = Vec::new();
+            for soldier in knights {
+                row.push(nav.moves_between(&loc(soldier), &spot) as i16);
+            }
+            for soldier in rangers {
+                row.push(nav.moves_between(&loc(soldier), &spot) as i16);
+            }
+            for soldier in healers {
+                row.push(nav.moves_between(&loc(soldier), &spot) as i16);
+            }
+            optimize_soldiers.push(row);
+        }
+    }
+
+    let assigned_soldiers = if (knights.len() > 0 ||  rangers.len() > 0 || healers.len() > 0) && soldier_spots.len() > 0 {
+        Some(hungarian(optimize_soldiers))
+    } else { None };
+
+    let mut boarding = FnvHashSet::default();
+    if let Some(assignment) = assigned_workers {
+        for (spot, worker) in assignment {
+            let (_, target) = worker_spots[spot];
+            boarding.insert(workers[worker].id());
+            nav.navigate(&workers[worker], &target);
+        }
+    }
+
+    let k = knights.len();
+    let r = k + rangers.len();
+
+    if let Some(assignment) = assigned_soldiers {
+        for (spot, soldier) in assignment {
+            if soldier < k {
+                boarding.insert(knights[soldier].id());
+                nav.navigate(&knights[soldier], &needed_spots[spot]);
+            } else if soldier < r {
+                boarding.insert(rangers[soldier - k].id());
+                nav.navigate(&rangers[soldier - k], &needed_spots[spot]);
+            } else {
+                boarding.insert(healers[soldier - r].id());
+                nav.navigate(&healers[soldier - r], &needed_spots[spot]);
+            }
+        }
+    }
+
+    boarding
+}
+
+pub fn assign_workers(nav: &mut Navigator, workers: &Vec<Unit>, karbonite: &Karbonite,
+    un_facts: &Vec<Unit>, fin_facts: &Vec<Unit>, un_rockets: &Vec<Unit>) {
 
     if workers.len() <= 0 { return }
     let karbonite = karbonite.keys().collect::<Vec<_>>();
     let un_facts = un_facts.iter().map(|fact| loc(fact)).collect::<Vec<_>>();
-    let fin_facts = fin_facts.iter().map(|fact| loc(fact)).collect::<Vec<_>>();
+    let fin_facts = fin_facts.iter()
+        .filter(|fact| fact.health() < fact.max_health())
+        .map(|fact| loc(fact))
+        .collect::<Vec<_>>();
     let un_rockets = un_rockets.iter().map(|rocket| loc(rocket)).collect::<Vec<_>>();
-    let fin_rockets = fin_rockets.iter().map(|rocket| loc(rocket)).collect::<Vec<_>>();
 
     let mut locations = Vec::new();
     let mut optimize = Vec::new();
-    for worker in &workers {
+    for worker in workers {
         let mut row = Vec::new();
         let worker_loc = loc(worker);
         for location in &karbonite {
@@ -42,19 +139,13 @@ pub fn assign_workers(nav: &mut Navigator, workers: Vec<Unit>, karbonite: &Karbo
         }
         for location in &fin_facts {
             let neighbors = nav.neighbors(&location) - 1;
-            let priority = 100 + nav.moves_between(&worker_loc, &location) as i16;
+            let priority = 10 + nav.moves_between(&worker_loc, &location) as i16;
             for _ in 0..neighbors { row.push(priority); locations.push(location); }
         }
         for location in &un_rockets {
             let neighbors = nav.neighbors(&location);
             let priority = nav.moves_between(&worker_loc, &location) as i16;
             for _ in 0..neighbors { row.push(priority); locations.push(location); }
-        }
-        if loc(&workers[0]).planet == Planet::Earth {
-            for location in &fin_rockets {
-                let priority = nav.moves_between(&worker_loc, &location) as i16;
-                for _ in 0..WORKERS_PER_FROCKET { row.push(priority); locations.push(location); }
-            }
         }
         optimize.push(row);
     }
