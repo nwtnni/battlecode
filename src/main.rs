@@ -81,11 +81,17 @@ fn main() {
     loop {
         nav.refresh(&gc);
 
+        let mut total_karb = 0;
+
         // Update Karb Map
         karb_locs.retain(|&loc,_| !(gc.can_sense_location(loc) && gc.karbonite_at(loc).unwrap() <= 0));
         karb_locs.iter_mut()
             .filter(|&(&loc, _)| gc.can_sense_location(loc))
             .for_each(|(&loc, karb)| *karb = gc.karbonite_at(loc).unwrap());
+
+        for (_,karb) in &karb_locs {
+            total_karb += karb;
+        }
 
         if gc.planet() == Planet::Mars {
             if gc.asteroid_pattern().has_asteroid(gc.round()) {
@@ -169,7 +175,7 @@ fn main() {
             if (fin_facts.len() + un_facts.len() != 0
             && !(gc.research_info().unwrap().get_level(&Rocket) > 0
             && un_rockets.len() + fin_rockets.len() ==0)
-            && workers.len() <10) || gc.round() > 750 {
+            && (workers.len() as u32) < u32::min(total_karb/150,8)) || gc.round() > 750 {
                 try_replicate(&mut gc, &worker);
             }
         }
@@ -178,7 +184,7 @@ fn main() {
 
         for worker in &workers {
             try_build(&mut gc, worker)
-            || (fin_facts.len() + un_facts.len() < 5 && try_blueprint(&mut gc, &nav, worker,Factory))
+            || (fin_facts.len() + un_facts.len() < 6 && try_blueprint(&mut gc, &nav, worker,Factory))
             || (gc.research_info().unwrap().get_level(&Rocket)>0 && try_blueprint(&mut gc, &nav, worker,Rocket))
             || try_harvest(&mut gc, worker);
         }
@@ -195,7 +201,7 @@ fn main() {
             nearby_units.sort_by_key(|en| nav.moves_between(&knight_loc, &loc(en)));
             if nearby_units.len() != 0 {
                 let friends = gc.sense_nearby_units_by_team(knight_loc, 9, gc.team());
-                let mut enemies = gc.sense_nearby_units_by_team(knight_loc, 50, gc.team().other());
+                let mut enemies = gc.sense_nearby_units_by_team(knight_loc, 64, gc.team().other());
                 enemies.retain(|en| en.unit_type().is_robot() && en.unit_type() != Worker && en.unit_type() != Healer);
                 enemies.retain(|en| loc(en).distance_squared_to(knight_loc) <= en.attack_range().unwrap());
                 if friends.len() >= enemies.len() || (enemies.len() != 0 && nav.moves_between(&knight_loc, &loc(&nearby_units[0])) <= 3) {
@@ -256,7 +262,7 @@ fn main() {
                 overcharged_units.push(overcharged);
             }
 
-            let mut nearby_units = gc.sense_nearby_units_by_team(healer_loc, 50, gc.team().other());
+            let mut nearby_units = gc.sense_nearby_units_by_team(healer_loc, 64, gc.team().other());
             nearby_units.sort_by_key(|en| nav.moves_between(&healer_loc, &loc(en)));
             if nearby_units.len() != 0 {
                 let friends = gc.sense_nearby_units_by_team(healer_loc, 25, gc.team());
@@ -339,6 +345,17 @@ fn try_build(gc: &mut GameController, unit: &Unit) -> bool {
     for building in units {
         if gc.can_build(unit.id(),building.id()) {
             gc.build(unit.id(),building.id());
+            return true
+        }
+    }
+    return false
+}
+
+fn try_repair(gc: &mut GameController, unit: &Unit) -> bool {
+    let units = gc.sense_nearby_units(loc(unit),2);
+    for building in units {
+        if gc.can_repair(unit.id(),building.id()) {
+            gc.repair(unit.id(),building.id());
             return true
         }
     }
