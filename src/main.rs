@@ -35,20 +35,6 @@ fn main() {
     let mut gc = GameController::new_player_env().unwrap();
     let mut nav = Navigator::new(&gc);
 
-    // RESEARCH QUEUE
-    gc.queue_research(Knight);
-    gc.queue_research(Knight);
-    gc.queue_research(Healer);
-    gc.queue_research(Knight);
-    gc.queue_research(Rocket);
-    gc.queue_research(Healer);
-    gc.queue_research(Healer);
-    gc.queue_research(Rocket);
-    gc.queue_research(Ranger);
-    gc.queue_research(Ranger);
-    gc.queue_research(Mage);
-    gc.queue_research(Mage);
-
     let (starting_units, starting_en_units): (Vec<_>, Vec<_>) = gc
         .starting_map(gc.planet())
         .initial_units.iter()
@@ -78,12 +64,54 @@ fn main() {
     }
 
     let mut prod_num = 0;
-    let production_queue = [Knight, Knight, Knight, Healer,Ranger];
+    let mut production_queue = Vec::new();
+    let mut switched = false;
+    if start != None && rally != None && nav.moves_between(&start.unwrap(), &rally.unwrap()) > min_possible_dist(&start.unwrap(),&rally.unwrap())*2 {
+        production_queue.push(Ranger);
+        production_queue.push(Ranger);
+        production_queue.push(Healer);
+        production_queue.push(Ranger);
+        production_queue.push(Ranger);
+        production_queue.push(Healer);
+
+        gc.queue_research(Worker);
+        gc.queue_research(Healer);
+        gc.queue_research(Healer);        
+        gc.queue_research(Ranger);
+        gc.queue_research(Rocket);
+        gc.queue_research(Healer);
+        gc.queue_research(Ranger);
+        gc.queue_research(Rocket);
+        switched = true;
+
+    }
+    else {
+        production_queue.push(Knight);
+        production_queue.push(Knight);
+        production_queue.push(Knight);
+        production_queue.push(Healer);
+        production_queue.push(Ranger);
+
+        // RESEARCH QUEUE
+        gc.queue_research(Knight);
+        gc.queue_research(Knight);
+        gc.queue_research(Healer);
+        gc.queue_research(Knight);
+        gc.queue_research(Rocket);
+        gc.queue_research(Healer);
+        gc.queue_research(Healer);
+        gc.queue_research(Rocket);
+        gc.queue_research(Ranger);
+        gc.queue_research(Ranger);
+        gc.queue_research(Mage);
+        gc.queue_research(Mage);
+    }
 
     let mut seen_locs = FnvHashMap::default();
 
     loop {
-        if gc.get_time_left_ms() < 500 {
+        if gc.get_time_left_ms() < 1000 {
+            println!("Time Left: {}", gc.get_time_left_ms());
             gc.next_turn();
         }
         nav.refresh(&gc);
@@ -167,6 +195,15 @@ fn main() {
         let mages = get_type(&gc, Mage);
         let healers = get_type(&gc, Healer);
 
+        if !switched && rangers.len() > 6 {
+            production_queue.clear();
+            production_queue.push(Ranger);
+            production_queue.push(Ranger);
+            production_queue.push(Healer);
+            production_queue.push(Knight);
+            switched = true;
+        }
+
         // FACTORY
         for fact in &fin_facts {
             if workers.len() == 0 {
@@ -246,7 +283,7 @@ fn main() {
                 let mut enemies = gc.sense_nearby_units_by_team(ranger_loc, 50, gc.team().other());
                 enemies.retain(|en| en.unit_type().is_robot() && en.unit_type() != Worker && en.unit_type() != Healer);
                 enemies.retain(|en| loc(en).distance_squared_to(ranger_loc) < en.attack_range().unwrap());
-                if friends.len() < enemies.len() || enemies.len() != 0 && nav.moves_between(&ranger_loc, &loc(&enemies[0])) <= 5 {
+                if friends.len() < enemies.len() || enemies.len() != 0 && nav.moves_between(&ranger_loc, &loc(&enemies[0])) <= 6 {
                     let my_loc = ranger_loc;
                     let en_loc = loc(&nearby_units[0]);
                     if start != None {
@@ -345,6 +382,17 @@ fn main() {
 
         gc.next_turn();
 
+    }
+}
+
+fn min_possible_dist(loc1: &MapLocation, loc2: &MapLocation) -> i32{
+    let dx = (loc1.x - loc2.x).abs();
+    let dy = (loc1.y - loc2.y).abs();
+    if dx > dy {
+        return dx
+    }
+    else {
+        return dy 
     }
 }
 
@@ -469,9 +517,17 @@ fn try_attack(gc: &mut GameController, nav: &mut Navigator, unit: &Unit) -> bool
 
 fn try_heal(gc: &mut GameController, nav: &mut Navigator, healer: &Unit) -> bool {
     let mut units = gc.sense_nearby_units_by_team(loc(healer), healer.attack_range().unwrap(),healer.team());
-    units.sort_by_key(|en| -nav.moves_between(&loc(healer),&loc(en)));
+    let (mut worker, mut other):(Vec<_>,Vec<_>) = units.into_iter().partition(|en| en.unit_type() == Worker);
+    worker.sort_by_key(|unit| unit.health());
+    other.sort_by_key(|unit| unit.health());
     if gc.is_heal_ready(healer.id()) {
-        for friend in units {
+        for friend in other {
+            if friend.health() != friend.max_health() && gc.can_heal(healer.id(),friend.id()) {
+                gc.heal(healer.id(),friend.id());
+                return true;
+            }
+        }
+        for friend in worker {
             if friend.health() != friend.max_health() && gc.can_heal(healer.id(),friend.id()) {
                 gc.heal(healer.id(),friend.id());
                 return true;
