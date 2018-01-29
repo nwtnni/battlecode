@@ -17,94 +17,49 @@ fn loc(unit: &Unit) -> MapLocation {
 pub fn assign_rockets(nav: &mut Navigator, gc: &GameController, fin_rockets: &Vec<Unit>,
     workers: &Vec<Unit>, knights: &Vec<Unit>, rangers: &Vec<Unit>, healers: &Vec<Unit>) -> FnvHashSet<u16> {
 
+    let mut boarding = FnvHashSet::default();
+    let mut assignments = FnvHashSet::default();
+
     let worker_spots = fin_rockets.iter()
-        .enumerate()
-        .filter(|&(_, rocket)| {
+        .filter(|rocket| {
             let garrison = rocket.structure_garrison().unwrap();
             garrison.iter().all(|&unit| {
                 gc.unit(unit).unwrap().unit_type() != UnitType::Worker
             }) && garrison.len() < rocket.structure_max_capacity().unwrap()
-        })
-        .map(|(i, rocket)| (i, loc(rocket)))
-        .collect::<Vec<_>>();
+        });
 
-    let worker_locs = workers.iter()
-        .map(|worker| loc(worker)).collect::<Vec<_>>();
-
-    let mut optimize_workers = Vec::new();
-    for &(_, spot) in &worker_spots {
-        let mut row = Vec::new();
-        for worker in &worker_locs {
-            row.push(nav.moves_between(&worker, &spot) as i16);
+    for spot in worker_spots {
+        let closest = workers.iter()
+            .filter(|worker| !boarding.contains(&worker.id()))
+            .min_by_key(|worker| {
+                nav.moves_between(&loc(worker), &loc(spot))
+            });
+        if let Some(worker) = closest {
+            boarding.insert(worker.id());
+            assignments.insert(spot.id());
+            nav.navigate(worker, &loc(spot));
         }
-        optimize_workers.push(row);
     }
-
-    let mut assignments = FnvHashSet::default();
-    let assigned_workers = if worker_locs.len() > 0 && worker_spots.len() > 0 {
-        let optimized = hungarian(optimize_workers);
-        for (&spot, _) in &optimized {
-            let &(i, _) = &worker_spots[spot];
-            assignments.insert(fin_rockets[i].id());
-        }
-        Some(optimized)
-    } else { None };
 
     let soldier_spots = fin_rockets.iter()
         .filter_map(|rocket| {
             let garrison = rocket.structure_garrison().unwrap();
             let worker = if assignments.contains(&rocket.id()) { 1 } else { 0 };
             let needed = rocket.structure_max_capacity().unwrap() - garrison.len() - worker;
-            if needed > 0 { Some((needed, loc(rocket))) } else { None }
+            if needed > 0 { Some((needed, rocket)) } else { None }
         }).collect::<Vec<_>>();
 
-    let mut needed_spots = Vec::new();
-    let mut optimize_soldiers = Vec::new();
-    for &(needed, spot) in &soldier_spots {
-        for _ in 0..needed {
-            needed_spots.push(spot);
-            let mut row = Vec::new();
-            for soldier in knights {
-                row.push(nav.moves_between(&loc(soldier), &spot) as i16);
-            }
-            for soldier in rangers {
-                row.push(nav.moves_between(&loc(soldier), &spot) as i16);
-            }
-            for soldier in healers {
-                row.push(nav.moves_between(&loc(soldier), &spot) as i16);
-            }
-            optimize_soldiers.push(row);
-        }
-    }
-
-    let assigned_soldiers = if (knights.len() > 0 ||  rangers.len() > 0 || healers.len() > 0) && soldier_spots.len() > 0 {
-        Some(hungarian(optimize_soldiers))
-    } else { None };
-
-    let mut boarding = FnvHashSet::default();
-    if let Some(assignment) = assigned_workers {
-        for (spot, worker) in assignment {
-            let (_, target) = worker_spots[spot];
-            boarding.insert(workers[worker].id());
-            nav.navigate(&workers[worker], &target);
-        }
-    }
-
-    let k = knights.len();
-    let r = k + rangers.len();
-
-    if let Some(assignment) = assigned_soldiers {
-        for (spot, soldier) in assignment {
-            if soldier < k {
-                boarding.insert(knights[soldier].id());
-                nav.navigate(&knights[soldier], &needed_spots[spot]);
-            } else if soldier < r {
-                boarding.insert(rangers[soldier - k].id());
-                nav.navigate(&rangers[soldier - k], &needed_spots[spot]);
-            } else {
-                boarding.insert(healers[soldier - r].id());
-                nav.navigate(&healers[soldier - r], &needed_spots[spot]);
-            }
+    let soldiers = knights.iter().chain(rangers.iter()).chain(healers.iter()).collect::<Vec<_>>();
+    for (needed, spot) in soldier_spots {
+        let mut closest = soldiers.iter()
+            .filter(|soldier| !boarding.contains(&soldier.id()))
+            .collect::<Vec<_>>();
+        closest.sort_by_key(|soldier| {
+            nav.moves_between(&loc(soldier), &loc(&spot))
+        });
+        for soldier in closest.iter().take(needed) {
+            boarding.insert(soldier.id());
+            nav.navigate(soldier, &loc(spot));
         }
     }
 

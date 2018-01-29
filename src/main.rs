@@ -435,16 +435,13 @@ fn try_unload(gc: &mut GameController, building: &Unit) {
 }
 
 // ROCKET METHODS
-fn try_load(gc: &mut GameController, rocket: &Unit, boarding: &FnvHashSet<u16>) -> usize {
-    let mut num_loaded = 0;
+fn try_load(gc: &mut GameController, rocket: &Unit, boarding: &FnvHashSet<u16>) {
     for unit in gc.sense_nearby_units_by_team(loc(rocket), 2, gc.team()) {
         if boarding.contains(&unit.id())
         && gc.can_load(rocket.id(),unit.id()) {
             gc.load(rocket.id(),unit.id());
-            num_loaded += 1;
         }
     }
-    return num_loaded
 }
 
 // ARMY METHODS
